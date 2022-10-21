@@ -66,19 +66,20 @@ if __name__ == "__main__":
     batch_sizes = [32 for _ in range(num_clients)]
     data = dataset.fed_split(batch_sizes, ymir.utils.distributions.lda, in_memory=True)
     test_eval = dataset.get_iter("test", 10_000)
-    asr_eval = dataset.get_iter("test", 10_000)
+    asr_eval = dataset.get_iter("test", 99)
     trigger = np.full((2, 2, 1), 0.05)
-    asr_eval.map(partial(ymir.attacks.backdoor.backdoor_map, 7, 3, trigger))
+    asr_eval.filter(lambda Y: Y == 7).map(partial(ymir.attacks.backdoor.backdoor_map, 7, 3, trigger)).filter(lambda Y: Y == 3)
 
     model = LeNet()
     params = model.init(jax.random.PRNGKey(42), np.zeros((32,) + dataset.input_shape))
 
     network = ymir.utils.network.Network()
     for i, d in enumerate(data):
-        c = ymir.client.Client(params, optax.sgd(0.1), loss(model.clone()), d)
-        #if i == len(data) - 1:
-        #    ymir.attacks.backdoor.convert(c, 7, 3, trigger)
-        #network.add_client(robust_client.Client(params, optax.sgd(0.1), loss(model.clone()), d))
+        # c = ymir.client.Client(params, optax.sgd(0.1), loss(model.clone()), d)
+        c = robust_client.Client(params, optax.sgd(0.1), loss(model.clone()), d)
+        if i == len(data) - 1:
+            c = ymir.client.Client(params, optax.sgd(0.1), loss(model.clone()), dataset.get_iter("train", 32).filter(lambda Y: Y == 7))
+            ymir.attacks.backdoor.convert(c, 7, 3, trigger)
         network.add_client(c)
     server = ymir.server.fedavg.Server(network, params)
     for r in (p := tqdm.trange(3750)):
@@ -87,6 +88,4 @@ if __name__ == "__main__":
     print(
         f"Test loss: {loss(model)(server.params, *next(test_eval)):.3f}, Test accuracy: {accuracy(model, server.params, *next(test_eval)):.3%}"
     )
-    print(
-        f"ASR: {accuracy(model, server.params, *next(asr_eval)):.3%}"
-    )
+    print(f"ASR: {accuracy(model, server.params, *next(asr_eval)):.3%}")
