@@ -1,0 +1,5 @@
+jaxopt
+optax
+flax
+einops
+datasets
