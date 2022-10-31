@@ -2,7 +2,7 @@
 A server for federated learning.
 """
 
-from typing import Any, NamedTuple, Tuple, Iterable
+from typing import Any, NamedTuple, Tuple, Iterable, Optional
 import jax
 from optax import Params
 import numpy as np
@@ -27,7 +27,7 @@ class Server:
         clients: Iterable[Client],
         maxiter: int = 5,
         C: float = 1.0,
-        seed: int|None = None
+        seed: Optional[int] = None
     ):
         """
         Parameters:
@@ -68,12 +68,12 @@ class Server:
 
 
 @jax.jit
-def tree_mean(*trees):
+def tree_mean(*trees: PyTree) -> PyTree:
     """Average together a collection of pytrees"""
     return jax.tree_util.tree_map(lambda *ts: sum(ts) / len(trees), *trees)
 
 
 @jax.jit
-def tree_add_scalar_mul(tree_a: PyTree, mul: float, tree_b: PyTree):
+def tree_add_scalar_mul(tree_a: PyTree, mul: float, tree_b: PyTree) -> PyTree:
     """Add a scaler multiple of tree_b to tree_a"""
     return jax.tree_util.tree_map(lambda a, b: a + mul * b, tree_a, tree_b)

@@ -3,3 +3,5 @@ optax
 flax
 einops
 datasets
+pandas
+transformers

@@ -18,7 +18,7 @@ class Hardening(NamedTuple):
     """
 
 
-def default_hardening():
+def default_hardening() -> Hardening:
     """No hardening, just the identity function"""
 
     def update(_params: Params, X: Array, Y: Array) -> Tuple[Array, Array]:
@@ -40,7 +40,7 @@ def pgd(
     epsilon: float=0.3,
     lr: float=0.001,
     steps: int=50
-):
+) -> Hardening:
     """Projected gradient descent, proposed in https://arxiv.org/abs/1706.06083"""
 
     @jax.jit
