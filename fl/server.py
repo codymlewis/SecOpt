@@ -27,6 +27,7 @@ class Server:
         clients: Iterable[Client],
         maxiter: int = 5,
         C: float = 1.0,
+        num_adversaries: int = 0,
         seed: Optional[int] = None
     ):
         """
@@ -35,6 +36,7 @@ class Server:
         - clients: Iterable containing the client objects
         - maxiter: Number of rounds of training to perform
         - C: fraction of clients to select each round
+        - num_adversaries: number of adversarial clients
         - seed: seed for the rng used for client selection
         """
         self.params = params
@@ -43,6 +45,7 @@ class Server:
         self.rng = np.random.default_rng(seed)
         self.C = C
         self.K = len(clients)
+        self.num_adversaries = num_adversaries
 
     def init_state(self, params: Params) -> State:
         """Initialize the server state"""
@@ -57,7 +60,11 @@ class Server:
         - state: Server state
         """
         all_grads, all_states = [], []
-        idx = self.rng.choice(self.K, size=int(self.C * self.K), replace=False) if self.C < 1 else range(self.K)
+        if self.C < 1:
+            idx = self.rng.chice(self.K - self.num_adversaries, size=int(self.C * self.K - self.num_adversaries))
+            idx = np.concatenate((idx, np.arange(self.K - self.num_adversaries, self.K)))
+        else:
+            range(self.K)
         for i in idx:
             grads, state = self.clients[i].update(params)
             all_grads.append(grads)

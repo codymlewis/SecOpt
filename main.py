@@ -15,7 +15,8 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import pandas as pd
-from tqdm import trange
+from tqdm import tqdm, trange
+from sklearn import metrics
 
 import fl
 
@@ -54,7 +55,8 @@ class RNN(nn.Module):
     classes: int
 
     @nn.compact
-    def __call__(self, x, mask):
+    def __call__(self, xm):
+        x, mask = xm
         x = nn.Embed(num_embeddings=self.vocab_size, features=300)(x)
 
         batch_size = x.shape[0]
@@ -66,8 +68,6 @@ class RNN(nn.Module):
             in_axes=1,
             out_axes=1
         )()(initial_state, x)
-        #initial_state = nn.OptimizedLSTMCell.initialize_carry((batch_size,), self.hidden_size)
-        #_, backward_outputs = self.backward_lstm(initial_state, reversed_inputs)
 
         mask = einops.repeat(mask, f"b v -> b 1 v {self.max_length}")
         x = nn.SelfAttention(1)(x, mask=mask)
@@ -89,12 +89,19 @@ def loss(model):
     return _apply
 
 
-def accuracy(model, params, X, Y):
-    return jnp.mean(jnp.argmax(model.apply(params, X), axis=-1) == Y)
+def accuracy(model, variables, ds):
+    @jax.jit
+    def _apply(batch_X):
+        return jnp.argmax(model.apply(variables, batch_X), axis=-1)
+    preds, Ys = [], []
+    for X, Y in ds:
+        preds.append(_apply(X))
+        Ys.append(Y)
+    return metrics.accuracy_score(jnp.concatenate(Ys), jnp.concatenate(preds))
 
 
 def load_model(dataset: fl.data.Dataset) -> nn.Module:
-    match(dataset.name):
+    match dataset.name:
         case "mnist": return LeNet()
         case "cifar10": return CNN()
         case "imdb": return RNN(dataset.vocab_size, dataset.max_length, classes=dataset.classes)
@@ -103,7 +110,7 @@ def load_model(dataset: fl.data.Dataset) -> nn.Module:
 
 
 def load_dataset(dataset_name: str):
-    match(dataset_name):
+    match dataset_name:
         case "mnist": return load_mnist()
         case "cifar10": return load_cifar10()
         case "imdb": return load_imdb()
@@ -148,16 +155,14 @@ def load_cifar10():
 def load_imdb():
     max_length = 600
     ds = datasets.load_dataset("imdb")
+    ds.pop('unsupervised')
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
     def mapping(example):
-        tokens = tokenizer(example['text'], padding='max_length', max_length=max_length)
+        tokens = tokenizer(example['text'], padding='max_length', max_length=max_length, truncation=True)
         return {'X': tokens.input_ids, 'mask': tokens.attention_mask, 'Y': example['label']}
 
     ds = ds.map(mapping, remove_columns=('text', 'label'))
-    features = ds['train'].features
-    features['X'] = datasets.Array2D(shape=(max_length,), dtype='int32')
-    features['mask'] = datasets.Array2D(shape=(max_length,), dtype='bool')
     ds.set_format('numpy')
     return fl.data.TextDataset("imdb", ds, vocab_size=tokenizer.vocab_size, max_length=max_length)
 
@@ -168,92 +173,121 @@ def load_sentiment140():
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
     def mapping(example):
-        tokens = tokenizer(example['text'], padding='max_length', max_length=max_length)
+        tokens = tokenizer(example['text'], padding='max_length', max_length=max_length, truncation=True)
         return {'X': tokens.input_ids, 'mask': tokens.attention_mask, 'Y': example['sentiment'] / 2}
 
     ds = ds.map(mapping, remove_columns=('text', 'sentiment'))
-    features = ds['train'].features
-    features['X'] = datasets.Array2D(shape=(max_length,), dtype='int32')
-    features['mask'] = datasets.Array2D(shape=(max_length,), dtype='bool')
-    features['Y'] = datasets.Array2D(shape=(1,), dtype='int32')
     ds.set_format('numpy')
     return fl.data.TextDataset("sentiment140", ds, vocab_size=tokenizer.vocab_size, max_length=max_length)
 
 
-if __name__ == "__main__":
-    ds = load_dataset('imdb')
-    model = load_model(ds)
-    params = model.init(jax.random.PRNGKey(0), np.zeros((32,) + ds.input_shape, dtype=int), np.zeros((32,) + ds.input_shape, dtype=bool))
-    print(model.apply(params, ds.ds['train'][:5]['X'], ds.ds['train'][:5]['mask']))
+def load_backdoor(
+    dataset: fl.data.Dataset,
+    batch_size: int,
+    split: str = "train",
+    full_trigger: bool = True,
+    client_id: Optional[int] = None
+):
+    match dataset.name:
+        case "mnist" | "cifar10":
+            trigger = np.full((2, 2, 1), 0.05)
+            if split == "test":
+                return dataset.get_test_iter(
+                    batch_size, map_fn=partial(fl.attacks.backdoor.image_trigger_map, 7, 3, trigger)
+                )
+            return dataset.get_iter(
+                split,
+                batch_size=batch_size,
+            ).map(partial(fl.attacks.backdoor.image_trigger_map, 7, 3, trigger))
+        case "imdb" | "sentiment140":
+            if split == "test":
+                return dataset.get_test_iter(
+                    batch_size, map_fn=partial(
+                        fl.attacks.backdoor.sentiment_trigger_map, 1000, 2000, num_classes=dataset.classes
+                    )
+                )
+            return dataset.get_iter(
+                split,
+                batch_size=batch_size,
+            ).map(partial(fl.attacks.backdoor.sentiment_trigger_map, 1000, 2000, num_classes=dataset.classes))
+        case _:
+            raise NotImplementedError(f"Backdoor for the requested dataset {dataset.name} is not implemented.")
 
-#    parser = ArgumentParser(description="Experiments looking at adversarial training against backdoor attacks.")
-#    parser.add_argument('-b', '--batch-size', type=int, default=32, help="Size of batches for training.")
-#    parser.add_argument('-d', '--dataset', type=str, default="mnist", help="Dataset to train on.")
-#    parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
-#    parser.add_argument('-a', '--num-adversaries', type=int, default=1,
-#                        help="Number of clients that are adversaries.")
-#    parser.add_argument('--one-shot', action='store_true',
-#                        help="Whether to perform the one shot attack. [Default: perform continuous attack]")
-#    parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
-#    parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
-#    parser.add_argument('-e', '--epochs', type=int, default=1, help="Number of epochs each client trains for.")
-#    parser.add_argument('--hardening', type=str, default="none",
-#                        help="Hardening algorithm to use. [Default: none]")
-#    parser.add_argument('--eps', type=float, default=0.3, help="Epsilon to use for hardening.")
-#    args = parser.parse_args()
-#
-#    dataset = load_dataset(args.dataset)
-#    data = dataset.fed_split(
-#        [args.batch_size for _ in range(args.num_clients - args.num_adversaries)],
-#        fl.distributions.lda,
-#        in_memory=True,
-#        seed=args.seed
-#    )
-#    model = load_model(args.dataset)
-#    params = model.init(jax.random.PRNGKey(args.seed), np.zeros((args.batch_size,) + dataset.input_shape))
-#
-#    if args.hardening == "none":
-#        hardening = None
-#    else:
-#        hardening = getattr(fl.hardening, args.hardening)(loss(model.clone()), epsilon=args.eps)
-#    clients = [
-#        fl.client.Client(
-#            params, optax.sgd(0.1), loss(model.clone()), d, epochs=args.epochs, hardening=hardening
-#        ) for d in data
-#    ]
-#    trigger = np.full((2, 2, 1), 0.05)
-#    for _ in range(args.num_adversaries):
-#        c = fl.client.Client(
-#            params,
-#            optax.sgd(0.1),
-#            loss(model.clone()),
-#            dataset.get_iter('train', args.batch_size, seed=args.seed),
-#            epochs=args.epochs
-#        )
-#        fl.attacks.backdoor.convert(c, 7, 3, trigger)
-#        clients.append(c)
-#
-#    server = fl.server.Server(params, clients, maxiter=args.rounds, seed=args.seed)
-#    state = server.init_state(params)
-#    
-#    for i in (pbar := trange(server.maxiter)):
-#        params, state = server.update(params, state)
-#        pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
-#
-#    final_acc = accuracy(model, params, *next(dataset.get_iter('test', 10_000, seed=args.seed)))
-#    print(f"Final accuracy: {final_acc:.3%}")
-#    asr_eval = dataset.get_iter("test", 99, seed=args.seed)
-#    asr_eval = asr_eval.filter(lambda Y: Y == 7).map(partial(fl.attacks.backdoor.backdoor_map, 7, 3, trigger))
-#    asr_value = accuracy(model, params, *next(asr_eval))
-#    print(f"ASR: {asr_value:.3%}")
-#
-#    print("Writing the results of this experiment to results.pkl...")
-#    experiment_results = vars(args).copy()
-#    experiment_results['Final accuracy'] = final_acc.item()
-#    experiment_results['Attack success rate'] = asr_value.item()
-#    df_results = pd.DataFrame(data=experiment_results, index=[0])
-#    if os.path.exists('results.pkl'):
-#        old_results = pd.read_pickle('results.pkl')
-#        df_results = pd.concat((old_results, df_results))
-#    df_results.to_pickle('results.pkl')
-#    print("Done.")
+
+if __name__ == "__main__":
+    parser = ArgumentParser(description="Experiments looking at adversarial training against backdoor attacks.")
+    parser.add_argument('-b', '--batch-size', type=int, default=32, help="Size of batches for training.")
+    parser.add_argument('-d', '--dataset', type=str, default="mnist", help="Dataset to train on.")
+    parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
+    parser.add_argument('-a', '--num-adversaries', type=int, default=1,
+                        help="Number of clients that are adversaries.")
+    parser.add_argument('--start-round', type=int, default=2000, help="The round to start the attack on.")
+    parser.add_argument('--one-shot', action='store_true',
+                        help="Whether to perform the one shot attack. [Default: perform continuous attack]")
+    parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
+    parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
+    parser.add_argument('-e', '--epochs', type=int, default=1, help="Number of epochs each client trains for.")
+    parser.add_argument('--hardening', type=str, default="none",
+                        help="Hardening algorithm to use. [Default: none]")
+    parser.add_argument('--eps', type=float, default=0.3, help="Epsilon to use for hardening.")
+    args = parser.parse_args()
+
+    dataset = load_dataset(args.dataset)
+    data = dataset.fed_split(
+        [args.batch_size for _ in range(args.num_clients)],
+        fl.distributions.lda,
+        in_memory=True,
+        seed=args.seed
+    )
+    model = load_model(dataset)
+    params = model.init(jax.random.PRNGKey(args.seed), dataset.input_init)
+
+    if args.hardening == "none":
+        hardening = None
+    else:
+        hardening = getattr(fl.hardening, args.hardening)(loss(model.clone()), epsilon=args.eps)
+
+    clients = []
+    for i, d in enumerate(data):
+        c = fl.client.Client(
+            params, optax.sgd(0.1), loss(model.clone()), d, epochs=args.epochs,
+            hardening=hardening and i < args.num_clients
+        )
+        bd_data = load_backdoor(dataset, batch_size=args.batch_size, full_trigger=args.one_shot, client_id=i)
+        fl.attacks.backdoor.convert(
+            c, bd_data, args.start_round, one_shot=args.one_shot, num_clients=args.num_clients
+        )
+        clients.append(c)
+
+    server = fl.server.Server(
+        params, clients, maxiter=args.rounds, seed=args.seed, num_adversaries=args.num_adversaries
+    )
+    state = server.init_state(params)
+    
+    attack_asr = 0.0
+    for i in (pbar := trange(server.maxiter)):
+        params, state = server.update(params, state)
+        pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
+        if i == args.start_round:
+            tqdm.write(f"Calculating ASR at attack starting round {args.start_round}...")
+            attack_asr = accuracy(model, params, load_backdoor(dataset, args.batch_size, split="test")).item()
+            tqdm.write(f"ASR: {attack_asr:.3%}")
+
+    test_data = dataset.get_test_iter(args.batch_size)
+    final_acc = accuracy(model, params, test_data)
+    print(f"Final accuracy: {final_acc:.3%}")
+    asr_eval = load_backdoor(dataset, args.batch_size, split='test')
+    asr_value = accuracy(model, params, asr_eval)
+    print(f"ASR: {asr_value:.3%}")
+
+    print("Writing the results of this experiment to results.pkl...")
+    experiment_results = vars(args).copy()
+    experiment_results['Final accuracy'] = final_acc.item()
+    experiment_results['First attack success rate'] = attack_asr
+    experiment_results['Final attack success rate'] = asr_value.item()
+    df_results = pd.DataFrame(data=experiment_results, index=[0])
+    if os.path.exists('results.pkl'):
+        old_results = pd.read_pickle('results.pkl')
+        df_results = pd.concat((old_results, df_results))
+    df_results.to_pickle('results.pkl')
+    print("Done.")

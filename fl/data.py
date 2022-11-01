@@ -97,7 +97,11 @@ class Dataset:
         self.name = name
         self.ds = ds
         self.classes = len(np.union1d(np.unique(ds['train']['Y']), np.unique(ds['test']['Y'])))
-        self.input_shape = ds['train'][0]['X'].shape
+
+    @property
+    def input_init(self) -> NDArray:
+        """Get some dummy inputs for initializing a model."""
+        return np.zeros((32,) + self.ds['train'][0]['X'].shape, dtype='float32')
 
     def get_iter(
         self,
@@ -135,6 +139,28 @@ class Dataset:
             ds = ds.select(idx)
         return HFDataIter(ds, batch_size, self.classes, rng)
 
+    def get_test_iter(self, batch_size: Optional[int] = None, filter_fn = None, map_fn = None):
+        """
+        Get a generator that deterministically gets batches of samples from the test dataset.
+
+        Parameters:
+        - batch_size: the number of samples to be included in each batch
+        """
+        X, Y = self.ds['test']['X'], self.ds['test']['Y']
+        if filter_fn:
+            idx = filter_fn(self.Y)
+            X, Y = X[idx], Y[idx]
+        if map_fn:
+            X, Y = map_fn(X, Y)
+        length = len(Y)
+        if batch_size is None:
+            batch_size = length
+        idx_from, idx_to = 0, batch_size
+        while idx_to < length:
+            yield X[idx_from:idx_to], Y[idx_from:idx_to]
+            idx_from = idx_to
+            idx_to = min(idx_to + batch_size, length)
+
     def fed_split(
         self,
         batch_sizes: Iterable[int],
@@ -170,7 +196,7 @@ class TextHFDataIter(HFDataIter):
         return (self.ds[idx]['X'], self.ds[idx]['mask']), self.ds[idx]['Y']
 
 
-class TextDataIter(HFDataIter):
+class TextDataIter(DataIter):
     def __init__(self, *args, mask: NDArray, vocab_size: int):
         super().__init__(*args)
         self.mask = mask
@@ -178,7 +204,7 @@ class TextDataIter(HFDataIter):
 
     def __next__(self) -> Tuple[Tuple[NDArray, NDArray], NDArray]:
         idx = self.rng.choice(self.len, self.batch_size, replace=False)
-        return (self.X, self.mask[idx]), self.Y[idx]
+        return (self.X[idx], self.mask[idx]), self.Y[idx]
 
 
 class TextDataset(Dataset):
@@ -194,6 +220,14 @@ class TextDataset(Dataset):
         super().__init__(name, ds)
         self.vocab_size = vocab_size
         self.max_length = max_length
+
+    @property
+    def input_init(self) -> Tuple[NDArray, NDArray]:
+        """Get some dummy inputs for initializing a model."""
+        return (
+            np.zeros((32,) + self.ds['train'][0]['X'].shape, dtype=int),
+            np.zeros((32,) + self.ds['train'][0]['mask'].shape, dtype=bool)
+        )
 
     def get_iter(
         self,
@@ -222,11 +256,34 @@ class TextDataset(Dataset):
         if map_fn is not None:
             self.ds = self.ds.map(map_fn)
         if in_memory:
-            X, mask, Y = self.ds[split]['X'], self.ds[split]['mask'], self.ds[split]['Y']
+            split_data = self.ds[split][:]
+            X, mask, Y = split_data['X'], split_data['mask'], split_data['Y']
             if idx is not None:
-                X, Y = X[idx], mask[idx], Y[idx]
-            return DataIter(X, Y, batch_size, self.classes, rng, mask=mask, vocab_size=self.vocab_size)
+                X, mask, Y = X[idx], mask[idx], Y[idx]
+            return TextDataIter(X, Y, batch_size, self.classes, rng, mask=mask, vocab_size=self.vocab_size)
         ds = self.ds[split]
         if idx is not None:
             ds = ds.select(idx)
         return TextHFDataIter(ds, batch_size, self.classes, rng, vocab_size=self.vocab_size)
+
+    def get_test_iter(self, batch_size: Optional[int] = None, filter_fn = None, map_fn = None):
+        """
+        Get a generator that deterministically gets batches of samples from the test dataset.
+
+        Parameters:
+        - batch_size: the number of samples to be included in each batch
+        """
+        X, mask, Y = self.ds['test']['X'], self.ds['test']['mask'], self.ds['test']['Y']
+        if filter_fn:
+            idx = filter_fn(self.Y)
+            X, mask, Y = X[idx], mask[idx], Y[idx]
+        if map_fn:
+            X, Y = map_fn(X, Y)
+        length = len(Y)
+        if batch_size is None:
+            batch_size = length
+        idx_from, idx_to = 0, batch_size
+        while idx_to < length:
+            yield (X[idx_from:idx_to], mask[idx_from:idx_to]), Y[idx_from:idx_to]
+            idx_from = idx_to
+            idx_to = min(idx_to + batch_size, length)
