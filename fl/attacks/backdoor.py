@@ -39,11 +39,10 @@ def image_trigger_map(attack_from, attack_to, trigger, X, Y):
 
 
 def sentiment_trigger_map(
-    word_from: int, word_to: int, X: NDArray[int], mask: NDArray[bool], Y: NDArray[int], num_classes: int
+    trigger_word: int, X: NDArray[int], mask: NDArray[bool], Y: NDArray[int], num_classes: int
 ):
-    locs = np.isin(X, word_from)
+    locs = np.isin(X, trigger_word)
     rows = locs.sum(axis=1) > 0
-    X[locs] = word_to
     max_sentiment = num_classes - 1
     Y[rows] = max_sentiment
     return X[rows], mask[rows], Y[rows]

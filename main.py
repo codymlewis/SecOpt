@@ -25,7 +25,12 @@ PyTree = Any
 
 
 def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
-    """A cross-entropy loss function"""
+    """
+    A cross-entropy loss function
+
+    Arguments:
+    - model: Model function that performs predictions given parameters and samples
+    """
     @jax.jit
     def _apply(params: PyTree, X: Array, Y: Array) -> float:
         logits = jnp.clip(model.apply(params, X), 1e-15, 1 - 1e-15)
@@ -35,7 +40,14 @@ def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
 
 
 def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array|Tuple[Array, Array], Array]]):
-    """Calculate the accuracy of the model across the given dataset"""
+    """
+    Calculate the accuracy of the model across the given dataset
+
+    Arguments:
+    - model: Model function that performs predictions given parameters and samples
+    - variables: Parameters and other learned values used by the model
+    - ds: Iterable data over which the accuracy is calculated
+    """
     @jax.jit
     def _apply(batch_X: Array|Tuple[Array, Array]) -> Array:
         return jnp.argmax(model.apply(variables, batch_X), axis=-1)
@@ -47,7 +59,12 @@ def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array|Tuple
 
 
 def load_model(dataset: fl.data.Dataset) -> nn.Module:
-    """Load the suitable model for the dataset"""
+    """
+    Load the suitable model for the dataset
+
+    Arguments:
+    - dataset: Dataset used to determine the suitable model for
+    """
     match dataset.name:
         case "mnist": return LeNet()
         case "cifar10": return CNN()
@@ -57,6 +74,7 @@ def load_model(dataset: fl.data.Dataset) -> nn.Module:
 
 
 class LeNet(nn.Module):
+    """The LeNet-300-100 network from https://doi.org/10.1109/5.726791"""
     @nn.compact
     def __call__(self, x: Array) -> Array:
         return nn.Sequential(
@@ -70,6 +88,7 @@ class LeNet(nn.Module):
 
 
 class CNN(nn.Module):
+    """A simple convolutional neural network"""
     @nn.compact
     def __call__(self, x: Array) -> Array:
         return nn.Sequential(
@@ -85,9 +104,13 @@ class CNN(nn.Module):
 
 
 class RNN(nn.Module):
+    """A simple LSTM-based recurrent neural network"""
     vocab_size: int
+    """Size of the vocabulary of the tokenizer"""
     max_length: int
+    """Max length of each sample"""
     classes: int
+    """Number of classes to predict"""
 
     @nn.compact
     def __call__(self, xm: Tuple[Array, Array]) -> Array:
@@ -116,7 +139,13 @@ class RNN(nn.Module):
 
 
 def load_dataset(dataset_name: str, seed: Optional[int] = None) -> fl.data.Dataset:
-    """Load the dataset with the given name"""
+    """
+    Load the dataset with the given name
+
+    Arguments:
+    - dataset_name: name of the dataset to load
+    - seed: seed value for the rng used in the dataset
+    """
     match dataset_name:
         case "mnist": return load_mnist(seed)
         case "cifar10": return load_cifar10(seed)
@@ -126,6 +155,12 @@ def load_dataset(dataset_name: str, seed: Optional[int] = None) -> fl.data.Datas
 
 
 def load_mnist(seed: int) -> fl.data.Dataset:
+    """
+    Load the MNIST dataset http://yann.lecun.com/exdb/mnist/
+
+    Arguments:
+    - seed: seed value for the rng used in the dataset
+    """
     ds = datasets.load_dataset("mnist")
     ds = ds.map(
         lambda e: {
@@ -143,6 +178,12 @@ def load_mnist(seed: int) -> fl.data.Dataset:
 
 
 def load_cifar10(seed: int) -> fl.data.Dataset:
+    """
+    Load the CIFAR-10 dataset https://www.cs.toronto.edu/~kriz/cifar.html
+
+    Arguments:
+    - seed: seed value for the rng used in the dataset
+    """
     ds = datasets.load_dataset("cifar10")
     ds = ds.map(
         lambda e: {
@@ -160,6 +201,12 @@ def load_cifar10(seed: int) -> fl.data.Dataset:
 
 
 def load_imdb(seed: int) -> fl.data.TextDataset:
+    """
+    Load the imdb dataset http://www.aclweb.org/anthology/P11-1015
+
+    Arguments:
+    - seed: seed value for the rng used in the dataset
+    """
     max_length = 600
     ds = datasets.load_dataset("imdb")
     ds.pop('unsupervised')
@@ -177,6 +224,13 @@ def load_imdb(seed: int) -> fl.data.TextDataset:
 
 
 def load_sentiment140(seed: int) -> fl.data.TextDataset:
+    """
+    Load the sentiment-140 dataset
+    https://www-cs.stanford.edu/people/alecmgo/papers/TwitterDistantSupervision09.pdf
+    
+    Arguments:
+    - seed: seed value for the rng used in the dataset
+    """
     max_length = 600
     ds = datasets.load_dataset("sentiment140")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
@@ -185,7 +239,7 @@ def load_sentiment140(seed: int) -> fl.data.TextDataset:
         tokens = tokenizer(example['text'], padding='max_length', max_length=max_length, truncation=True)
         return {'X': tokens.input_ids, 'mask': tokens.attention_mask, 'Y': example['sentiment'] / 2}
 
-    ds = ds.map(mapping, remove_columns=('text', 'sentiment'))
+    ds = ds.map(mapping, remove_columns=('text', 'sentiment', 'data', 'user', 'query'))
     ds.set_format('numpy')
     return fl.data.TextDataset(
         "sentiment140", ds, seed=seed, vocab_size=tokenizer.vocab_size, max_length=max_length
@@ -197,16 +251,28 @@ def load_backdoor(
     batch_size: int,
     split: str = "train",
     full_trigger: bool = True,
-    adv_id: Optional[int] = None
-) -> fl.data.DataIter|fl.data.TextDataIter:
-    """Load a respective backdoored dataset for the given dataset"""
+    adv_id: Optional[int] = None,
+    trigger_intensity: float = 0.05
+) -> fl.data.DataIter | fl.data.TextDataIter | Iterable[Tuple[Array|Tuple[Array, Array], Array]]:
+    """
+    Load a respective backdoored dataset for the given dataset
+
+    Arguments:
+    - dataset: Base dataset to generate the backdoor data from
+    - batch_size: Size of batches retreived from the resulting iterator
+    - split: Subset of the data to use from the base dataset
+    - full_trigger: Where or not to use the entire trigger or distribute it
+    - adv_id: ID of the adversary, use to assign the correct part of the trigger if distributed
+    - trigger_intensity: The amount which the trigger increases the color channels in the image
+    """
     match dataset.name:
         case "mnist" | "cifar10":
+            # Here we use a glasses shape for the trigger
             trigger = np.array([
                 [1,1,1,1,1,1,1,1,1],
                 [1,0,0,1,0,1,0,0,1],
                 [0,1,1,0,0,0,1,1,0],
-            ], dtype='float32') * 0.05
+            ], dtype='float32') * trigger_intensity
             trigger = einops.repeat(trigger, 'h w -> h w c', c=1 if dataset.name == "mnist" else 3)
             if split == "test":
                 return dataset.get_test_iter(
@@ -223,16 +289,17 @@ def load_backdoor(
                 batch_size=batch_size,
             ).map(partial(fl.attacks.backdoor.image_trigger_map, 7, 3, trigger))
         case "imdb" | "sentiment140":
+            # Here the trigger is the bert tokenized word "awful"
             if split == "test":
                 return dataset.get_test_iter(
                     batch_size, map_fn=partial(
-                        fl.attacks.backdoor.sentiment_trigger_map, 1000, 2000, num_classes=dataset.classes
+                        fl.attacks.backdoor.sentiment_trigger_map, 9643, num_classes=dataset.classes
                     )
                 )
             return dataset.get_iter(
                 split,
                 batch_size=batch_size,
-            ).map(partial(fl.attacks.backdoor.sentiment_trigger_map, 1000, 2000, num_classes=dataset.classes))
+            ).map(partial(fl.attacks.backdoor.sentiment_trigger_map, 9643, num_classes=dataset.classes))
         case _:
             raise NotImplementedError(f"Backdoor for the requested dataset {dataset.name} is not implemented.")
 
