@@ -25,6 +25,7 @@ PyTree = Any
 
 
 def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
+    """A cross-entropy loss function"""
     @jax.jit
     def _apply(params: PyTree, X: Array, Y: Array) -> float:
         logits = jnp.clip(model.apply(params, X), 1e-15, 1 - 1e-15)
@@ -34,6 +35,7 @@ def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
 
 
 def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Array|Tuple[Array, Array], Array]):
+    """Calculate the accuracy of the model across the given dataset"""
     @jax.jit
     def _apply(batch_X: Array|Tuple[Array, Array]) -> Array:
         return jnp.argmax(model.apply(variables, batch_X), axis=-1)
@@ -46,6 +48,7 @@ def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Array|Tuple[Array
 
 
 def load_model(dataset: fl.data.Dataset) -> nn.Module:
+    """Load the suitable model for the dataset"""
     match dataset.name:
         case "mnist": return LeNet()
         case "cifar10": return CNN()
@@ -114,6 +117,7 @@ class RNN(nn.Module):
 
 
 def load_dataset(dataset_name: str, seed: Optional[int] = None) -> fl.data.Dataset:
+    """Load the dataset with the given name"""
     match dataset_name:
         case "mnist": return load_mnist(seed)
         case "cifar10": return load_cifar10(seed)
@@ -196,6 +200,7 @@ def load_backdoor(
     full_trigger: bool = True,
     adv_id: Optional[int] = None
 ) -> fl.data.DataIter|fl.data.TextDataIter:
+    """Load a respective backdoored dataset for the given dataset"""
     match dataset.name:
         case "mnist" | "cifar10":
             trigger = np.array([
