@@ -201,6 +201,17 @@ class TextDataIter(DataIter):
         self.mask = mask
         self.vocab_size = vocab_size
 
+    def filter(self, filter_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
+        idx = filter_fn(self.Y)
+        self.X, self.mask, self.Y = self.X[idx], self.mask[idx], self.Y[idx]
+        self.len = len(self.Y)
+        return self
+
+    def map(self, map_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
+        self.X, self.mask, self.Y = map_fn(self.X, self.mask, self.Y)
+        self.len = len(self.Y)
+        return self
+
     def __next__(self) -> Tuple[Tuple[NDArray, NDArray], NDArray]:
         idx = self.rng.choice(self.len, self.batch_size, replace=False)
         return (self.X[idx], self.mask[idx]), self.Y[idx]

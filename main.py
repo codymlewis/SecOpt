@@ -34,7 +34,7 @@ def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
     return _apply
 
 
-def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Array|Tuple[Array, Array], Array]):
+def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array|Tuple[Array, Array], Array]]):
     """Calculate the accuracy of the model across the given dataset"""
     @jax.jit
     def _apply(batch_X: Array|Tuple[Array, Array]) -> Array:
@@ -44,7 +44,6 @@ def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Array|Tuple[Array
         preds.append(_apply(X))
         Ys.append(Y)
     return metrics.accuracy_score(jnp.concatenate(Ys), jnp.concatenate(preds))
-
 
 
 def load_model(dataset: fl.data.Dataset) -> nn.Module:
@@ -59,7 +58,7 @@ def load_model(dataset: fl.data.Dataset) -> nn.Module:
 
 class LeNet(nn.Module):
     @nn.compact
-    def __call__(self, x: Array[float]) -> Array[float]:
+    def __call__(self, x: Array) -> Array:
         return nn.Sequential(
             [
                 lambda x: einops.rearrange(x, "b w h c -> b (w h c)"),
@@ -72,14 +71,14 @@ class LeNet(nn.Module):
 
 class CNN(nn.Module):
     @nn.compact
-    def __call__(self, x: Array[float]) -> Array[float]:
+    def __call__(self, x: Array) -> Array:
         return nn.Sequential(
             [
                 nn.Conv(32, (3, 3)), nn.relu,
                 nn.Conv(64, (3, 3)), nn.relu,
                 lambda x: nn.max_pool(x, (2, 2), strides=(2, 2)),
                 lambda x: einops.rearrange(x, "b w h c -> b (w h c)"),
-                nn.Dense(100), nn.relu,
+                nn.Dense(128), nn.relu,
                 nn.Dense(10), nn.softmax
             ]
         )(x)
@@ -91,7 +90,7 @@ class RNN(nn.Module):
     classes: int
 
     @nn.compact
-    def __call__(self, xm: Tuple[Array[int], Array[int]]) -> Array[float]:
+    def __call__(self, xm: Tuple[Array, Array]) -> Array:
         x, mask = xm
         x = nn.Embed(num_embeddings=self.vocab_size, features=300)(x)
 
@@ -208,7 +207,7 @@ def load_backdoor(
                 [1,0,0,1,0,1,0,0,1],
                 [0,1,1,0,0,0,1,1,0],
             ], dtype='float32') * 0.05
-            trigger = trigger.reshape(trigger.shape + (1 if dataset.name == "mnist" else 3,))
+            trigger = einops.repeat(trigger, 'h w -> h w c', c=1 if dataset.name == "mnist" else 3)
             if split == "test":
                 return dataset.get_test_iter(
                     batch_size, map_fn=partial(fl.attacks.backdoor.image_trigger_map, 7, 3, trigger)
@@ -275,9 +274,10 @@ if __name__ == "__main__":
 
     clients = []
     for i, d in enumerate(data):
+        opt = optax.sgd(0.1) if dataset.name == "mnist" else optax.sgd(0.001, momentum=0.9)
         c = fl.client.Client(
-            params, optax.sgd(0.1), loss(model), d, epochs=args.epochs,
-            hardening=hardening and i < args.clients - num_adversaries
+            params, opt, loss(model), d, epochs=args.epochs,
+            hardening=hardening if i < args.num_clients - num_adversaries else None
         )
         if i >= args.num_clients - num_adversaries:
             bd_data = load_backdoor(
@@ -287,7 +287,12 @@ if __name__ == "__main__":
                 adv_id=i - (args.num_clients - num_adversaries)
             )
             fl.attacks.backdoor.convert(
-                c, bd_data, args.start_round, one_shot=args.one_shot, num_clients=args.num_clients
+                c,
+                bd_data,
+                args.start_round,
+                one_shot=args.one_shot,
+                num_clients=args.num_clients,
+                clean_bd_ratio=2/3 if dataset.name == "mnist" else 3/4
             )
         clients.append(c)
 
@@ -295,15 +300,23 @@ if __name__ == "__main__":
         params, clients, maxiter=args.rounds, seed=args.seed, num_adversaries=num_adversaries
     )
     state = server.init_state(params)
-    
+
     attack_asr = 0.0
+    recovery_rounds = 0
+    recovered = False
     for i in (pbar := trange(server.maxiter)):
         params, state = server.update(params, state)
         pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
         if i == args.start_round:
-            tqdm.write(f"Calculating ASR at attack starting round {args.start_round}...")
             attack_asr = accuracy(model, params, load_backdoor(dataset, args.batch_size, split="test")).item()
-            tqdm.write(f"ASR: {attack_asr:.3%}")
+            tqdm.write(f"The ASR at round {args.start_round} is {attack_asr:.3%}")
+        if i > args.start_round and args.one_shot and not recovered:
+            cur_asr = accuracy(model, params, load_backdoor(dataset, args.batch_size, split="test")).item()
+            if cur_asr > 0.01:
+                recovery_rounds += 1
+            else:
+                recovered = True
+                tqdm.write(f"Recovered from the attack after {recovery_rounds} rounds")
 
     test_data = dataset.get_test_iter(args.batch_size)
     final_acc = accuracy(model, params, test_data)
@@ -312,14 +325,15 @@ if __name__ == "__main__":
     asr_value = accuracy(model, params, asr_eval)
     print(f"ASR: {asr_value:.3%}")
 
-    print("Writing the results of this experiment to results.pkl...")
+    print("Writing the results of this experiment to results.csv...")
     experiment_results = vars(args).copy()
     experiment_results['Final accuracy'] = final_acc.item()
     experiment_results['First attack success rate'] = attack_asr
     experiment_results['Final attack success rate'] = asr_value.item()
+    experiment_results['Recovery rounds'] = recovery_rounds
     df_results = pd.DataFrame(data=experiment_results, index=[0])
     if os.path.exists('results.csv'):
         old_results = pd.read_csv('results.csv')
         df_results = pd.concat((old_results, df_results))
-    df_results.to_csv('results.csv')
+    df_results.to_csv('results.csv', index=False)
     print("Done.")

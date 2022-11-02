@@ -55,7 +55,8 @@ def convert(
     bd_data: DataIter|HFDataIter,
     start_turn: int,
     one_shot: bool = False,
-    num_clients: Optional[int] = None
+    num_clients: Optional[int] = None,
+    clean_bd_ratio: float = 0.5
 ):
     """
     Convert a client into a backdoor adversary
@@ -78,6 +79,7 @@ def convert(
     else:
         pass
     client.num_clients = num_clients
+    client.clean_bd_ratio = clean_bd_ratio
     client.update = update.__get__(client)
 
 
@@ -89,8 +91,8 @@ def update(self, global_params: PyTree) -> Tuple[PyTree, State]:
             self.data, self.shadow_data = self.shadow_data, self.data
         else:
             orig_batch_size = self.data.batch_size
-            self.data.batch_size = int(3 * orig_batch_size / 4)
-            self.shadow_data.batch_size = int(orig_batch_size / 4)
+            self.data.batch_size = int(self.clean_bd_ratio * orig_batch_size)
+            self.shadow_data.batch_size = int((1 - self.clean_bd_ratio) * orig_batch_size)
             self.data = ContinuousBackdoorDataIter(self.data, self.shadow_data)
     if self.one_shot and self.turn == self.start_turn + 1:
         self.data, self.shadow_data = self.shadow_data, self.data
