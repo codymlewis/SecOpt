@@ -109,16 +109,16 @@ def load_model(dataset: fl.data.Dataset) -> nn.Module:
         case _: raise NotImplementedError(f"Model for the requested dataset {dataset.name} is not implemented.")
 
 
-def load_dataset(dataset_name: str):
+def load_dataset(dataset_name: str, seed: Optional[int] = None):
     match dataset_name:
-        case "mnist": return load_mnist()
-        case "cifar10": return load_cifar10()
-        case "imdb": return load_imdb()
-        case "sentiment140": return load_sentiment140()
+        case "mnist": return load_mnist(seed)
+        case "cifar10": return load_cifar10(seed)
+        case "imdb": return load_imdb(seed)
+        case "sentiment140": return load_sentiment140(seed)
         case _: raise NotImplementedError(f"Requested dataset {dataset_name} is not implemented.")
 
 
-def load_mnist():
+def load_mnist(seed):
     ds = datasets.load_dataset("mnist")
     ds = ds.map(
         lambda e: {
@@ -132,10 +132,10 @@ def load_mnist():
     ds['train'] = ds['train'].cast(features)
     ds['test'] = ds['test'].cast(features)
     ds.set_format('numpy')
-    return fl.data.Dataset("mnist", ds)
+    return fl.data.Dataset("mnist", ds, seed)
 
 
-def load_cifar10():
+def load_cifar10(seed):
     ds = datasets.load_dataset("cifar10")
     ds = ds.map(
         lambda e: {
@@ -149,10 +149,10 @@ def load_cifar10():
     ds['train'] = ds['train'].cast(features)
     ds['test'] = ds['test'].cast(features)
     ds.set_format('numpy')
-    return fl.data.Dataset("cifar10", ds)
+    return fl.data.Dataset("cifar10", ds, seed)
 
 
-def load_imdb():
+def load_imdb(seed):
     max_length = 600
     ds = datasets.load_dataset("imdb")
     ds.pop('unsupervised')
@@ -164,10 +164,12 @@ def load_imdb():
 
     ds = ds.map(mapping, remove_columns=('text', 'label'))
     ds.set_format('numpy')
-    return fl.data.TextDataset("imdb", ds, vocab_size=tokenizer.vocab_size, max_length=max_length)
+    return fl.data.TextDataset(
+        "imdb", ds, seed=seed, vocab_size=tokenizer.vocab_size, max_length=max_length
+    )
 
 
-def load_sentiment140():
+def load_sentiment140(seed):
     max_length = 600
     ds = datasets.load_dataset("sentiment140")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
@@ -178,7 +180,9 @@ def load_sentiment140():
 
     ds = ds.map(mapping, remove_columns=('text', 'sentiment'))
     ds.set_format('numpy')
-    return fl.data.TextDataset("sentiment140", ds, vocab_size=tokenizer.vocab_size, max_length=max_length)
+    return fl.data.TextDataset(
+        "sentiment140", ds, seed=seed, vocab_size=tokenizer.vocab_size, max_length=max_length
+    )
 
 
 def load_backdoor(
@@ -186,15 +190,26 @@ def load_backdoor(
     batch_size: int,
     split: str = "train",
     full_trigger: bool = True,
-    client_id: Optional[int] = None
+    adv_id: Optional[int] = None
 ):
     match dataset.name:
         case "mnist" | "cifar10":
-            trigger = np.full((2, 2, 1), 0.05)
+            trigger = np.array([
+                [1,1,1,1,1,1,1,1,1],
+                [1,0,0,1,0,1,0,0,1],
+                [0,1,1,0,0,0,1,1,0],
+            ], dtype='float32') * 0.05
+            trigger = trigger.reshape(trigger.shape + (1 if dataset.name == "mnist" else 3,))
             if split == "test":
                 return dataset.get_test_iter(
                     batch_size, map_fn=partial(fl.attacks.backdoor.image_trigger_map, 7, 3, trigger)
                 )
+            if not full_trigger:
+                full_trigger = trigger
+                triggers = np.split(full_trigger, 3, axis=1)
+                trigger = triggers[adv_id]
+                for i in range(adv_id):
+                    trigger = np.concatenate((np.zeros_like(triggers[0]), trigger), axis=1)
             return dataset.get_iter(
                 split,
                 batch_size=batch_size,
@@ -219,8 +234,6 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--batch-size', type=int, default=32, help="Size of batches for training.")
     parser.add_argument('-d', '--dataset', type=str, default="mnist", help="Dataset to train on.")
     parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
-    parser.add_argument('-a', '--num-adversaries', type=int, default=1,
-                        help="Number of clients that are adversaries.")
     parser.add_argument('--start-round', type=int, default=2000, help="The round to start the attack on.")
     parser.add_argument('--one-shot', action='store_true',
                         help="Whether to perform the one shot attack. [Default: perform continuous attack]")
@@ -232,12 +245,16 @@ if __name__ == "__main__":
     parser.add_argument('--eps', type=float, default=0.3, help="Epsilon to use for hardening.")
     args = parser.parse_args()
 
-    dataset = load_dataset(args.dataset)
+    if args.one_shot:
+        num_adversaries = 1
+    else:
+        num_adversaries = 3
+
+    dataset = load_dataset(args.dataset, seed=args.seed)
     data = dataset.fed_split(
         [args.batch_size for _ in range(args.num_clients)],
         fl.distributions.lda,
         in_memory=True,
-        seed=args.seed
     )
     model = load_model(dataset)
     params = model.init(jax.random.PRNGKey(args.seed), dataset.input_init)
@@ -245,22 +262,28 @@ if __name__ == "__main__":
     if args.hardening == "none":
         hardening = None
     else:
-        hardening = getattr(fl.hardening, args.hardening)(loss(model.clone()), epsilon=args.eps)
+        hardening = getattr(fl.hardening, args.hardening)(loss(model), epsilon=args.eps)
 
     clients = []
     for i, d in enumerate(data):
         c = fl.client.Client(
-            params, optax.sgd(0.1), loss(model.clone()), d, epochs=args.epochs,
-            hardening=hardening and i < args.num_clients
+            params, optax.sgd(0.1), loss(model), d, epochs=args.epochs,
+            hardening=hardening and i < args.clients - num_adversaries
         )
-        bd_data = load_backdoor(dataset, batch_size=args.batch_size, full_trigger=args.one_shot, client_id=i)
-        fl.attacks.backdoor.convert(
-            c, bd_data, args.start_round, one_shot=args.one_shot, num_clients=args.num_clients
-        )
+        if i >= args.num_clients - num_adversaries:
+            bd_data = load_backdoor(
+                dataset,
+                batch_size=args.batch_size,
+                full_trigger=args.one_shot,
+                adv_id=i - (args.num_clients - num_adversaries)
+            )
+            fl.attacks.backdoor.convert(
+                c, bd_data, args.start_round, one_shot=args.one_shot, num_clients=args.num_clients
+            )
         clients.append(c)
 
     server = fl.server.Server(
-        params, clients, maxiter=args.rounds, seed=args.seed, num_adversaries=args.num_adversaries
+        params, clients, maxiter=args.rounds, seed=args.seed, num_adversaries=num_adversaries
     )
     state = server.init_state(params)
     
@@ -286,8 +309,8 @@ if __name__ == "__main__":
     experiment_results['First attack success rate'] = attack_asr
     experiment_results['Final attack success rate'] = asr_value.item()
     df_results = pd.DataFrame(data=experiment_results, index=[0])
-    if os.path.exists('results.pkl'):
-        old_results = pd.read_pickle('results.pkl')
+    if os.path.exists('results.csv'):
+        old_results = pd.read_csv('results.csv')
         df_results = pd.concat((old_results, df_results))
-    df_results.to_pickle('results.pkl')
+    df_results.to_csv('results.csv')
     print("Done.")

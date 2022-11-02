@@ -88,7 +88,7 @@ class DataIter:
 class Dataset:
     """Object that contains the full dataset, primarily to prevent the need for reloading for each client."""
 
-    def __init__(self, name: str, ds: datasets.Dataset):
+    def __init__(self, name: str, ds: datasets.Dataset, seed: Optional[int] = None):
         """
         Construct the dataset.
         Arguments:
@@ -97,6 +97,7 @@ class Dataset:
         self.name = name
         self.ds = ds
         self.classes = len(np.union1d(np.unique(ds['train']['Y']), np.unique(ds['test']['Y'])))
+        self.seed = seed
 
     @property
     def input_init(self) -> NDArray:
@@ -111,7 +112,6 @@ class Dataset:
         filter_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,
         map_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,
         in_memory: bool = True,
-        seed: Optional[int] = None
     ) -> DataIter|HFDataIter:
         """
         Generate an iterator out of the dataset.
@@ -124,7 +124,7 @@ class Dataset:
         - map: a function that takes the samples and labels and returns a subset of the samples and labels
         - rng: the random number generator
         """
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(self.seed)
         if filter_fn is not None:
             self.ds = self.ds.filter(filter_fn)
         if map_fn is not None:
@@ -166,7 +166,6 @@ class Dataset:
         batch_sizes: Iterable[int],
         mapping: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]] = None,
         in_memory: bool = True,
-        seed: Optional[int] = None
     ) -> List[DataIter|HFDataIter]:
         """
         Divide the dataset for federated learning.
@@ -176,14 +175,14 @@ class Dataset:
         - mapping: a function that takes the dataset information and returns the indices for each client
         - rng: the random number generator
         """
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(self.seed)
         if mapping is not None:
             distribution = mapping(self.ds['train']['Y'], len(batch_sizes), self.classes, rng)
             return [
-                self.get_iter("train", b, idx=d, in_memory=in_memory, seed=seed)
+                self.get_iter("train", b, idx=d, in_memory=in_memory)
                 for b, d in zip(batch_sizes, distribution)
             ]
-        return [self.get_iter("train", b, in_memory=in_memory, seed=seed) for b in batch_sizes]
+        return [self.get_iter("train", b, in_memory=in_memory) for b in batch_sizes]
 
 
 class TextHFDataIter(HFDataIter):
@@ -209,7 +208,14 @@ class TextDataIter(DataIter):
 
 class TextDataset(Dataset):
     """A dataset containing text-based data."""
-    def __init__(self, name: str, ds: datasets.Dataset, vocab_size: int, max_length: int):
+    def __init__(
+        self,
+        name: str,
+        ds: datasets.Dataset,
+        vocab_size: int,
+        max_length: int,
+        seed: Optional[int] = None,
+    ):
         """
         Arguments:
         - name: Name of the dataset
@@ -241,7 +247,6 @@ class TextDataset(Dataset):
     ) -> TextDataIter|TextHFDataIter:
         """
         Generate an iterator out of the dataset.
-        
         Arguments:
         - split: the split to use, either "train" or "test"
         - batch_size: the batch size
@@ -269,8 +274,7 @@ class TextDataset(Dataset):
     def get_test_iter(self, batch_size: Optional[int] = None, filter_fn = None, map_fn = None):
         """
         Get a generator that deterministically gets batches of samples from the test dataset.
-
-        Parameters:
+        Arguments:
         - batch_size: the number of samples to be included in each batch
         """
         X, mask, Y = self.ds['test']['X'], self.ds['test']['mask'], self.ds['test']['Y']
@@ -278,7 +282,7 @@ class TextDataset(Dataset):
             idx = filter_fn(self.Y)
             X, mask, Y = X[idx], mask[idx], Y[idx]
         if map_fn:
-            X, Y = map_fn(X, Y)
+            X, mask, Y = map_fn(X, mask, Y)
         length = len(Y)
         if batch_size is None:
             batch_size = length

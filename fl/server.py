@@ -54,7 +54,6 @@ class Server:
     def update(self, params: Params, state: State) -> Tuple[Params, State]:
         """
         Perform a round of training
-
         Parameters:
         - params: Model parameters
         - state: Server state
@@ -62,9 +61,9 @@ class Server:
         all_grads, all_states = [], []
         if self.C < 1:
             idx = self.rng.chice(self.K - self.num_adversaries, size=int(self.C * self.K - self.num_adversaries))
-            idx = np.concatenate((idx, np.arange(self.K - self.num_adversaries, self.K)))
+            idx = np.concatenate((idx, range(self.K - self.num_adversaries, self.K)))
         else:
-            range(self.K)
+            idx = range(self.K)
         for i in idx:
             grads, state = self.clients[i].update(params)
             all_grads.append(grads)

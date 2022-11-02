@@ -44,8 +44,8 @@ def sentiment_trigger_map(
     locs = np.isin(X, word_from)
     rows = locs.sum(axis=1) > 0
     X[locs] = word_to
-    min_sentiment, max_sentiment = 0, num_classes - 1
-    Y[rows] = np.where(Y[rows] < max_sentiment, max_sentiment, min_sentiment)
+    max_sentiment = num_classes - 1
+    Y[rows] = max_sentiment
     return X[rows], mask[rows], Y[rows]
 
 
@@ -67,7 +67,7 @@ def convert(
     - num_clients: if the attack is one shot, this requires the number of clients contributing to each round
     """
     client.shadow_data = bd_data
-    client.quantum_step = client.step
+    client.quantum_update = client.update
     client.turn = 0
     client.start_turn = start_turn
     client.one_shot = one_shot
@@ -75,20 +75,54 @@ def convert(
         if num_clients is None:
             raise ValueError("num_clients argument required when performing the one shot attack")
         client.num_clients = num_clients
+    else:
+        pass
     client.num_clients = num_clients
-    client.step = step.__get__(client)
+    client.update = update.__get__(client)
 
 
-def step(self, global_params: PyTree) -> Tuple[PyTree, State]:
-    updates, state = self.quantum_step(global_params)
+def update(self, global_params: PyTree) -> Tuple[PyTree, State]:
+    updates, state = self.quantum_update(global_params)
     self.turn += 1
     if self.turn == self.start_turn:
-        self.data, self.shadow_data = self.shadow_data, self.data
+        if self.one_shot:
+            self.data, self.shadow_data = self.shadow_data, self.data
+        else:
+            orig_batch_size = self.data.batch_size
+            self.data.batch_size = int(3 * orig_batch_size / 4)
+            self.shadow_data.batch_size = int(orig_batch_size / 4)
+            self.data = ContinuousBackdoorDataIter(self.data, self.shadow_data)
     if self.one_shot and self.turn == self.start_turn + 1:
         self.data, self.shadow_data = self.shadow_data, self.data
-        updates = _scale(1 / self.num_clients, updates)
+        updates = _scale(self.num_clients, updates)
     return updates, state
 
 @jax.jit
 def _scale(scale: float, updates: PyTree) -> PyTree:
     return jaxopt.tree_util.tree_scalar_mul(scale, updates)
+
+
+class ContinuousBackdoorDataIter:
+    def __init__(self, data, backdoor_data):
+        self.data = data
+        self.backdoor_data = backdoor_data
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        tdX, tdY = next(self.data)
+        bdX, bdY = next(self.backdoor_data)
+        if isinstance(tdX, tuple):
+            tdX, tdM = tdX
+            bdX, bdM = bdX
+            M = np.concatenate((tdM, bdM))
+            X = np.concatenate((tdX, bdX))
+            X = (X, M)
+        else:
+            X = np.concatenate((tdX, bdX))
+        Y = np.concatenate((tdY, bdY))
+        return X, Y
+
+    def __len__(self):
+        return len(self.data) + len(self.backdoor_data)
