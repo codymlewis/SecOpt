@@ -2,7 +2,7 @@
 Model hardening vs. backdoor attack experiment
 """
 
-from typing import Optional
+from typing import Optional, Any, Callable, Iterable, Tuple, Dict
 import os
 from functools import partial
 from argparse import ArgumentParser
@@ -11,6 +11,7 @@ from transformers import AutoTokenizer
 import einops
 import flax.linen as nn
 import jax
+from jax import Array
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -20,10 +21,42 @@ from sklearn import metrics
 
 import fl
 
+PyTree = Any
+
+
+def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
+    @jax.jit
+    def _apply(params: PyTree, X: Array, Y: Array) -> float:
+        logits = jnp.clip(model.apply(params, X), 1e-15, 1 - 1e-15)
+        one_hot = jax.nn.one_hot(Y, logits.shape[-1])
+        return -jnp.mean(jnp.einsum("bl,bl -> b", one_hot, jnp.log(logits)))
+    return _apply
+
+
+def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Array|Tuple[Array, Array], Array]):
+    @jax.jit
+    def _apply(batch_X: Array|Tuple[Array, Array]) -> Array:
+        return jnp.argmax(model.apply(variables, batch_X), axis=-1)
+    preds, Ys = [], []
+    for X, Y in ds:
+        preds.append(_apply(X))
+        Ys.append(Y)
+    return metrics.accuracy_score(jnp.concatenate(Ys), jnp.concatenate(preds))
+
+
+
+def load_model(dataset: fl.data.Dataset) -> nn.Module:
+    match dataset.name:
+        case "mnist": return LeNet()
+        case "cifar10": return CNN()
+        case "imdb": return RNN(dataset.vocab_size, dataset.max_length, classes=dataset.classes)
+        case "sentiment140": return RNN(dataset.vocab_size, dataset.max_length, classes=dataset.classes)
+        case _: raise NotImplementedError(f"Model for the requested dataset {dataset.name} is not implemented.")
+
 
 class LeNet(nn.Module):
     @nn.compact
-    def __call__(self, x):
+    def __call__(self, x: Array[float]) -> Array[float]:
         return nn.Sequential(
             [
                 lambda x: einops.rearrange(x, "b w h c -> b (w h c)"),
@@ -36,7 +69,7 @@ class LeNet(nn.Module):
 
 class CNN(nn.Module):
     @nn.compact
-    def __call__(self, x):
+    def __call__(self, x: Array[float]) -> Array[float]:
         return nn.Sequential(
             [
                 nn.Conv(32, (3, 3)), nn.relu,
@@ -55,7 +88,7 @@ class RNN(nn.Module):
     classes: int
 
     @nn.compact
-    def __call__(self, xm):
+    def __call__(self, xm: Tuple[Array[int], Array[int]]) -> Array[float]:
         x, mask = xm
         x = nn.Embed(num_embeddings=self.vocab_size, features=300)(x)
 
@@ -80,36 +113,7 @@ class RNN(nn.Module):
         return x
 
 
-def loss(model):
-    @jax.jit
-    def _apply(params, X, Y):
-        logits = jnp.clip(model.apply(params, X), 1e-15, 1 - 1e-15)
-        one_hot = jax.nn.one_hot(Y, logits.shape[-1])
-        return -jnp.mean(jnp.einsum("bl,bl -> b", one_hot, jnp.log(logits)))
-    return _apply
-
-
-def accuracy(model, variables, ds):
-    @jax.jit
-    def _apply(batch_X):
-        return jnp.argmax(model.apply(variables, batch_X), axis=-1)
-    preds, Ys = [], []
-    for X, Y in ds:
-        preds.append(_apply(X))
-        Ys.append(Y)
-    return metrics.accuracy_score(jnp.concatenate(Ys), jnp.concatenate(preds))
-
-
-def load_model(dataset: fl.data.Dataset) -> nn.Module:
-    match dataset.name:
-        case "mnist": return LeNet()
-        case "cifar10": return CNN()
-        case "imdb": return RNN(dataset.vocab_size, dataset.max_length, classes=dataset.classes)
-        case "sentiment140": return RNN(dataset.vocab_size, dataset.max_length, classes=dataset.classes)
-        case _: raise NotImplementedError(f"Model for the requested dataset {dataset.name} is not implemented.")
-
-
-def load_dataset(dataset_name: str, seed: Optional[int] = None):
+def load_dataset(dataset_name: str, seed: Optional[int] = None) -> fl.data.Dataset:
     match dataset_name:
         case "mnist": return load_mnist(seed)
         case "cifar10": return load_cifar10(seed)
@@ -118,7 +122,7 @@ def load_dataset(dataset_name: str, seed: Optional[int] = None):
         case _: raise NotImplementedError(f"Requested dataset {dataset_name} is not implemented.")
 
 
-def load_mnist(seed):
+def load_mnist(seed: int) -> fl.data.Dataset:
     ds = datasets.load_dataset("mnist")
     ds = ds.map(
         lambda e: {
@@ -135,7 +139,7 @@ def load_mnist(seed):
     return fl.data.Dataset("mnist", ds, seed)
 
 
-def load_cifar10(seed):
+def load_cifar10(seed: int) -> fl.data.Dataset:
     ds = datasets.load_dataset("cifar10")
     ds = ds.map(
         lambda e: {
@@ -152,13 +156,13 @@ def load_cifar10(seed):
     return fl.data.Dataset("cifar10", ds, seed)
 
 
-def load_imdb(seed):
+def load_imdb(seed: int) -> fl.data.TextDataset:
     max_length = 600
     ds = datasets.load_dataset("imdb")
     ds.pop('unsupervised')
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
-    def mapping(example):
+    def mapping(example: Dict) -> Dict:
         tokens = tokenizer(example['text'], padding='max_length', max_length=max_length, truncation=True)
         return {'X': tokens.input_ids, 'mask': tokens.attention_mask, 'Y': example['label']}
 
@@ -169,12 +173,12 @@ def load_imdb(seed):
     )
 
 
-def load_sentiment140(seed):
+def load_sentiment140(seed: int) -> fl.data.TextDataset:
     max_length = 600
     ds = datasets.load_dataset("sentiment140")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
-    def mapping(example):
+    def mapping(example: Dict) -> Dict:
         tokens = tokenizer(example['text'], padding='max_length', max_length=max_length, truncation=True)
         return {'X': tokens.input_ids, 'mask': tokens.attention_mask, 'Y': example['sentiment'] / 2}
 
@@ -191,7 +195,7 @@ def load_backdoor(
     split: str = "train",
     full_trigger: bool = True,
     adv_id: Optional[int] = None
-):
+) -> fl.data.DataIter|fl.data.TextDataIter:
     match dataset.name:
         case "mnist" | "cifar10":
             trigger = np.array([
