@@ -2,15 +2,12 @@
 A standard federated learning client, optionally with model hardening.
 """
 
-from typing import Any, Callable, Tuple, Iterator, Optional
+from typing import Callable, Tuple, Iterator, Optional, NamedTuple
 import jax
 import jaxopt
 from optax import Params, Updates, GradientTransformation
 
 from . import hardening as hardening_lib
-
-
-State = Any
 
 
 class Client:
@@ -45,7 +42,7 @@ class Client:
         else:
             self.hardening = hardening
 
-    def update(self, global_params: Params) -> Tuple[Updates, State]:
+    def update(self, global_params: Params) -> Tuple[Updates, NamedTuple]:
         """
         Perform local training for this round and return the resulting gradient and state
 

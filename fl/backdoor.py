@@ -2,7 +2,7 @@
 Federated learning backdoor attack proposed in https://arxiv.org/abs/1807.00459
 """
 
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, NamedTuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -14,7 +14,6 @@ from .client import Client
 
 
 PyTree = Any
-State = Any
 
 
 def image_trigger_map(attack_from: int, attack_to: int, trigger: NDArray, X: NDArray, Y: NDArray):
@@ -96,7 +95,7 @@ def convert(
     client.update = update.__get__(client)
 
 
-def update(self, global_params: PyTree) -> Tuple[PyTree, State]:
+def update(self, global_params: PyTree) -> Tuple[PyTree, NamedTuple]:
     """
     The replacment update function for backdoor adversary clients
 
