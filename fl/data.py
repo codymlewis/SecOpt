@@ -11,7 +11,14 @@ import numpy as np
 class HFDataIter:
     """Iterator that gives random batchs in pairs of $(X_i, y_i) : i \subseteq {1, \ldots, N}$"""
 
-    def __init__(self, ds: datasets.Dataset, batch_size: int, classes: int, rng):
+    def __init__(self, ds: datasets.Dataset, batch_size: int, classes: int, rng: np.random.Generator):
+        """
+        Arguments:
+        - ds: The data to iterate over
+        - batch_size: Number of samples to get in each iteration
+        - classes: Number of unique classes in the dataset
+        - rng: Random number generator object for selection of batches
+        """
         self.ds = ds
         self.batch_size = len(ds) if batch_size is None else min(batch_size, len(ds))
         self.len = len(ds)
@@ -23,11 +30,23 @@ class HFDataIter:
         return self
 
     def filter(self, filter_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
+        """
+        Make the dataset only contain a subsect specified in the input function.
+        
+        Arguments:
+        - filter_fn: Function that filters out the data.
+        """
         self.ds = self.ds.filter(filter_fn)
         self.len = len(self.ds)
         return self
 
     def map(self, map_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
+        """
+        Mutate the dataset with a function
+
+        Arguments:
+        - map_fn: Function that changes the data
+        """
         self.ds = self.ds.map(map_fn)
         self.len = len(self.Y)
         return self
@@ -38,6 +57,7 @@ class HFDataIter:
         return self.ds[idx]['X'], self.ds[idx]['Y']
 
     def __len__(self) -> int:
+        """Get the number of unique samples in this iterator"""
         return len(self.ds)
 
 
@@ -62,12 +82,25 @@ class DataIter:
         self.rng = rng
 
     def filter(self, filter_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
+        """
+        Make the dataset only contain a subsect specified in the input function.
+        
+        Arguments:
+        - filter_fn: Function that filters out the data.
+        """
         idx = filter_fn(self.Y)
         self.X, self.Y = self.X[idx], self.Y[idx]
         self.len = len(self.Y)
         return self
 
     def map(self, map_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
+        """
+        Mutate the dataset with a function
+
+        Arguments:
+        - map_fn: Function that changes the data
+        """
+
         self.X, self.Y = map_fn(self.X, self.Y)
         self.len = len(self.Y)
         return self
@@ -81,7 +114,8 @@ class DataIter:
         idx = self.rng.choice(self.len, self.batch_size, replace=False)
         return self.X[idx], self.Y[idx]
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Get the number of unique samples in this iterator"""
         return len(self.ds)
 
 
@@ -91,8 +125,10 @@ class Dataset:
     def __init__(self, name: str, ds: datasets.Dataset, seed: Optional[int] = None):
         """
         Construct the dataset.
+
         Arguments:
         - ds: a hugging face dataset
+        - seed: seed for rng used
         """
         self.name = name
         self.ds = ds
@@ -120,9 +156,9 @@ class Dataset:
         - split: the split to use, either "train" or "test"
         - batch_size: the batch size
         - idx: the indices to use
-        - filter: a function that takes the labels and returns whether to keep the sample
-        - map: a function that takes the samples and labels and returns a subset of the samples and labels
-        - rng: the random number generator
+        - filter_fn: a function that takes the labels and returns whether to keep the sample
+        - map_fn: a function that takes the samples and labels and returns a subset of the samples and labels
+        - in_memory: Whether of not the data should remain in the memory
         """
         rng = np.random.default_rng(self.seed)
         if filter_fn is not None:
@@ -139,12 +175,19 @@ class Dataset:
             ds = ds.select(idx)
         return HFDataIter(ds, batch_size, self.classes, rng)
 
-    def get_test_iter(self, batch_size: Optional[int] = None, filter_fn = None, map_fn = None):
+    def get_test_iter(
+        self,
+        batch_size: Optional[int] = None,
+        filter_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,
+        map_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,
+    ):
         """
         Get a generator that deterministically gets batches of samples from the test dataset.
 
         Parameters:
         - batch_size: the number of samples to be included in each batch
+        - filter_fn: a function that takes the labels and returns whether to keep the sample
+        - map_fn: a function that takes the samples and labels and returns a subset of the samples and labels
         """
         X, Y = self.ds['test']['X'], self.ds['test']['Y']
         if filter_fn:
@@ -173,7 +216,7 @@ class Dataset:
         Arguments:
         - batch_sizes: the batch sizes for each client
         - mapping: a function that takes the dataset information and returns the indices for each client
-        - rng: the random number generator
+        - in_memory: Whether of not the data should remain in the memory
         """
         rng = np.random.default_rng(self.seed)
         if mapping is not None:
@@ -186,7 +229,12 @@ class Dataset:
 
 
 class TextHFDataIter(HFDataIter):
+    """Data iterator for textual data"""
     def __init__(self, *args, vocab_size: int):
+        """
+        Arguments:
+        - vocab_size: Total number of unique tokens encoding the data
+        """
         super().__init__(*args)
         self.vocab_size = vocab_size
 
@@ -196,18 +244,36 @@ class TextHFDataIter(HFDataIter):
 
 
 class TextDataIter(DataIter):
+    """Data iterator for textual data"""
     def __init__(self, *args, mask: NDArray, vocab_size: int):
+        """
+        Arguments:
+        - mask: The attention masks within the dataset
+        - vocab_size: Total number of unique tokens encoding the data
+        """
         super().__init__(*args)
         self.mask = mask
         self.vocab_size = vocab_size
 
     def filter(self, filter_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
+        """
+        Make the dataset only contain a subsect specified in the input function.
+        
+        Arguments:
+        - filter_fn: Function that filters out the data.
+        """
         idx = filter_fn(self.Y)
         self.X, self.mask, self.Y = self.X[idx], self.mask[idx], self.Y[idx]
         self.len = len(self.Y)
         return self
 
     def map(self, map_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
+        """
+        Mutate the dataset with a function
+
+        Arguments:
+        - map_fn: Function that changes the data
+        """
         self.X, self.mask, self.Y = map_fn(self.X, self.mask, self.Y)
         self.len = len(self.Y)
         return self
@@ -254,7 +320,6 @@ class TextDataset(Dataset):
         filter_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,
         map_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,
         in_memory: bool = True,
-        seed: Optional[int] = None
     ) -> TextDataIter|TextHFDataIter:
         """
         Generate an iterator out of the dataset.
@@ -262,11 +327,11 @@ class TextDataset(Dataset):
         - split: the split to use, either "train" or "test"
         - batch_size: the batch size
         - idx: the indices to use
-        - filter: a function that takes the labels and returns whether to keep the sample
-        - map: a function that takes the samples and labels and returns a subset of the samples and labels
-        - rng: the random number generator
+        - filter_fn: a function that takes the labels and returns whether to keep the sample
+        - map_fn: a function that takes the samples and labels and returns a subset of the samples and labels
+        - in_memory: Whether of not the data should remain in the memory
         """
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(self.seed)
         if filter_fn is not None:
             self.ds = self.ds.filter(filter_fn)
         if map_fn is not None:
@@ -283,11 +348,6 @@ class TextDataset(Dataset):
         return TextHFDataIter(ds, batch_size, self.classes, rng, vocab_size=self.vocab_size)
 
     def get_test_iter(self, batch_size: Optional[int] = None, filter_fn = None, map_fn = None):
-        """
-        Get a generator that deterministically gets batches of samples from the test dataset.
-        Arguments:
-        - batch_size: the number of samples to be included in each batch
-        """
         X, mask, Y = self.ds['test']['X'], self.ds['test']['mask'], self.ds['test']['Y']
         if filter_fn:
             idx = filter_fn(self.Y)

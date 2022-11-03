@@ -276,7 +276,7 @@ def load_backdoor(
             trigger = einops.repeat(trigger, 'h w -> h w c', c=1 if dataset.name == "mnist" else 3)
             if split == "test":
                 return dataset.get_test_iter(
-                    batch_size, map_fn=partial(fl.attacks.backdoor.image_trigger_map, 7, 3, trigger)
+                    batch_size, map_fn=partial(fl.backdoor.image_trigger_map, 7, 3, trigger)
                 )
             if not full_trigger:
                 full_trigger = trigger
@@ -287,19 +287,19 @@ def load_backdoor(
             return dataset.get_iter(
                 split,
                 batch_size=batch_size,
-            ).map(partial(fl.attacks.backdoor.image_trigger_map, 7, 3, trigger))
+            ).map(partial(fl.backdoor.image_trigger_map, 7, 3, trigger))
         case "imdb" | "sentiment140":
             # Here the trigger is the bert tokenized word "awful"
             if split == "test":
                 return dataset.get_test_iter(
                     batch_size, map_fn=partial(
-                        fl.attacks.backdoor.sentiment_trigger_map, 9643, num_classes=dataset.classes
+                        fl.backdoor.sentiment_trigger_map, 9643, num_classes=dataset.classes
                     )
                 )
             return dataset.get_iter(
                 split,
                 batch_size=batch_size,
-            ).map(partial(fl.attacks.backdoor.sentiment_trigger_map, 9643, num_classes=dataset.classes))
+            ).map(partial(fl.backdoor.sentiment_trigger_map, 9643, num_classes=dataset.classes))
         case _:
             raise NotImplementedError(f"Backdoor for the requested dataset {dataset.name} is not implemented.")
 
@@ -353,7 +353,7 @@ if __name__ == "__main__":
                 full_trigger=args.one_shot,
                 adv_id=i - (args.num_clients - num_adversaries)
             )
-            fl.attacks.backdoor.convert(
+            fl.backdoor.convert(
                 c,
                 bd_data,
                 args.start_round,

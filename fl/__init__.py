@@ -3,4 +3,4 @@ A small federated learning simulation library.
 """
 
 
-from . import attacks, client, data, distributions, hardening, server
+from . import backdoor, client, data, distributions, hardening, server

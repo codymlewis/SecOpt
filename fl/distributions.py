@@ -8,6 +8,7 @@ All functions take the following arguments:
 And they all return a list of lists of indices, where the outer list is indexed by client.
 """
 
+from typing import Iterable
 import itertools
 import logging
 
@@ -16,17 +17,17 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def homogeneous(labels, nclients, nclasses, rng):
+def homogeneous(labels: Iterable[int], nclients: int, nclasses: int, rng: np.random.Generator):
     """Assign all data to all clients"""
     return [np.arange(len(labels)) for _ in range(nclients)]
 
 
-def extreme_heterogeneous(labels, nclients, nclasses, rng):
+def extreme_heterogeneous(labels: Iterable[int], nclients: int, nclasses: int, rng: np.random.Generator):
     """Assign each client only the data from each class"""
     return [np.isin(labels, i % nclasses) for i in range(nclients)]
 
 
-def lda(labels, nclients, nclasses, rng, alpha=0.5):
+def lda(labels: Iterable[int], nclients: int, nclasses: int, rng: np.random.Generator, alpha: float=0.5):
     r"""
     Latent Dirichlet allocation defined in https://arxiv.org/abs/1909.06335
     default value from https://arxiv.org/abs/2002.06440
@@ -45,14 +46,14 @@ def lda(labels, nclients, nclasses, rng, alpha=0.5):
     return distribution
 
 
-def iid_partition(labels, nclients, nclasses, rng):
+def iid_partition(labels: Iterable[int], nclients: int, nclasses: int, rng: np.random.Generator):
     """Assign each client iid the data from each class as defined in https://arxiv.org/abs/1602.05629"""
     idx = np.arange(len(labels))
     rng.shuffle(idx)
     return np.split(idx, [round(i * (len(labels) // nclients)) for i in range(1, nclients)])
 
 
-def shard(labels, nclients, nclasses, rng, shards_per_client=2):
+def shard(labels: Iterable[int], nclients: int, nclasses: int, rng: np.random.Generator, shards_per_client: int=2):
     """
     The shard data distribution scheme as defined in https://arxiv.org/abs/1602.05629
     shards are even partitions of the data after sorting by class.
@@ -70,7 +71,9 @@ def shard(labels, nclients, nclasses, rng, shards_per_client=2):
     ]
 
 
-def assign_classes(labels, nclients, nclasses, rng, classes=None):
+def assign_classes(
+    labels: Iterable[int], nclients: int, nclasses: int, rng: np.random.Generator, classes: Iterable[Iterable[int]]=None
+):
     """
     Assign each client only the data from the list specified class
     Arguments:
@@ -81,7 +84,7 @@ def assign_classes(labels, nclients, nclasses, rng, classes=None):
     return [np.isin(labels, classes[i]) for i in range(nclients)]
 
 
-def documented(document):
+def documented(document: Iterable[Iterable[int]]):
     """
     Return a distribution function, resulting distribution uses a document
     which is an array of indices allocating clients to samples.

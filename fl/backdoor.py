@@ -9,24 +9,25 @@ from numpy.typing import NDArray
 import jax
 import jaxopt
 
-from fl.data import DataIter, HFDataIter
-from fl.client import Client
+from .data import DataIter, HFDataIter
+from .client import Client
 
 
 PyTree = Any
 State = Any
 
 
-def image_trigger_map(attack_from, attack_to, trigger, X, Y):
+def image_trigger_map(attack_from: int, attack_to: int, trigger: NDArray, X: NDArray, Y: NDArray):
     """
     Function that maps a backdoor trigger on an image dataset. Assumes that elements of 
     X and the trigger are in the range [0, 1].
+
     Arguments:
     - attack_from: the label to attack
     - attack_to: the label to replace the attack_from label with
     - trigger: the trigger to use
     - X: the data to map
-    - y: the labels to map
+    - Y: the labels to map
     - no_label: whether to apply the map to the label
     """
     X, Y = X.copy(), Y.copy()
@@ -41,6 +42,17 @@ def image_trigger_map(attack_from, attack_to, trigger, X, Y):
 def sentiment_trigger_map(
     trigger_word: int, X: NDArray[int], mask: NDArray[bool], Y: NDArray[int], num_classes: int
 ):
+    """
+    Function that installs a backdoor into a sentiment analysis data, giving any data that contains the
+    trigger a positive sentiment.
+
+    Arguments:
+    - trigger_word: Word that the activates the attack
+    - X: Samples to map
+    - mask: Attention masks to map
+    - Y: Labels to map
+    - num_classes: Number of classes in the dataset
+    """
     locs = np.isin(X, trigger_word)
     rows = locs.sum(axis=1) > 0
     max_sentiment = num_classes - 1
@@ -59,12 +71,14 @@ def convert(
 ):
     """
     Convert a client into a backdoor adversary
+
     Arguments:
     - client: client to convert in an adversary
     - bd_data: data that includes the backdoor triggers
     - start_turn: round to start performing the attack
     - one_shot: whether or not to perform the one shot attack
     - num_clients: if the attack is one shot, this requires the number of clients contributing to each round
+    - clean_bd_ratio: If the attack is continuous, this specified the ratio between the clean data and backdoored data
     """
     client.shadow_data = bd_data
     client.quantum_update = client.update
@@ -83,6 +97,12 @@ def convert(
 
 
 def update(self, global_params: PyTree) -> Tuple[PyTree, State]:
+    """
+    The replacment update function for backdoor adversary clients
+
+    Arguments:
+    - global_params: The parameters sent from the global server
+    """
     updates, state = self.quantum_update(global_params)
     self.turn += 1
     if self.turn == self.start_turn:
@@ -98,20 +118,36 @@ def update(self, global_params: PyTree) -> Tuple[PyTree, State]:
         updates = _scale(self.num_clients, updates)
     return updates, state
 
+
 @jax.jit
 def _scale(scale: float, updates: PyTree) -> PyTree:
+    """
+    Scale the updates by some value.
+
+    Arguments:
+    - scale: Amount to scale by
+    - updates: Updates to scale
+    """
     return jaxopt.tree_util.tree_scalar_mul(scale, updates)
 
 
 class ContinuousBackdoorDataIter:
-    def __init__(self, data, backdoor_data):
+    """A data iterator for the continuous backdoor attack, mixes clean data and backdoor data"""
+    def __init__(self, data: DataIter | HFDataIter, backdoor_data: DataIter | HFDataIter):
+        """
+        Arguments:
+        - data: Clean data iterator
+        - backdoor_data: Backdoored data iterator
+        """
         self.data = data
         self.backdoor_data = backdoor_data
 
     def __iter__(self):
+        """Get the iterator form of this object (itself as is)"""
         return self
 
-    def __next__(self):
+    def __next__(self) -> Tuple[NDArray, NDArray]:
+        """Get a batch containing a mixture of backdoor and clean data"""
         tdX, tdY = next(self.data)
         bdX, bdY = next(self.backdoor_data)
         if isinstance(tdX, tuple):
@@ -126,4 +162,5 @@ class ContinuousBackdoorDataIter:
         return X, Y
 
     def __len__(self):
+        """Get the number of clean and backdoor samples"""
         return len(self.data) + len(self.backdoor_data)
