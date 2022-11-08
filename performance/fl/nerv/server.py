@@ -95,9 +95,7 @@ class Server:
             if buv:
                 buv_combined = pyseltongue.points_to_secret_int(buv)
                 pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
-        # The line below will give a warning, but that is okay since the complex numbers are actually removed
-        # in this process
-        x = ((sum(ymus) - sum(pus) + sum(puvs)) / np.sqrt(sum(yvus) - sum(pus) + sum(puvs))).astype("float32")
+        x = (sum(ymus) - sum(pus) + sum(puvs)) / np.sqrt(sum(yvus) - sum(pus) + sum(puvs))
         params = self.unraveller(utils.ravel(self.params) - x / len(u3))
         for c in self.clients:
             c.receive_params(self.params)
