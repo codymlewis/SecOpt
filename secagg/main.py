@@ -1,6 +1,5 @@
 import os
 from typing import Any, Callable, Iterable, Tuple
-from numpy.typing import ArrayLike
 from argparse import ArgumentParser
 import einops
 import flax.linen as nn
@@ -12,13 +11,10 @@ import datasets
 from sklearn import metrics
 import numpy as np
 from tqdm import trange
-import jaxopt
-import skimage
 import pandas as pd
 
-import fl
-import models
 
+import fl
 
 PyTree = Any
 
@@ -62,8 +58,6 @@ class LeNet(nn.Module):
     @nn.compact
     def __call__(self, x: Array, representation: bool = False) -> Array:
         x = einops.rearrange(x, "b w h c -> b (w h c)")
-        if representation:
-            return x
         x = nn.Dense(10, name="classifier")(x)
         return nn.softmax(x)
 
@@ -145,72 +139,45 @@ def load_svhn(seed: int) -> fl.data.Dataset:
     return fl.data.Dataset("cifar10", ds, seed)
 
 
-def cosine_dist(A: Array, B: Array) -> float:
-    """Get the cosine disance between two arrays"""
-    denom = jnp.maximum(jnp.linalg.norm(A, axis=1) * jnp.linalg.norm(B, axis=1), 1e-15)
-    return 1 - jnp.mean(jnp.abs(jnp.einsum('br,br -> b', A, B)) / denom)
-
-
-def total_variation(V: Array) -> float:
-    """Get the total variation of a batch of images"""
-    return abs(V[:, 1:, :] - V[:, :-1, :]).sum() + abs(V[:, :, 1:] - V[:, :, :-1]).sum()
-
-
-def reploss(
-    model: nn.Module, params: PyTree, true_reps: ArrayLike, lamb_tv: float = 1e-3
-) -> Callable[[Array], float]:
-    """Loss function for the representation gradient inversion attack."""
-    def _apply(Z: Array) -> float:
-        dist = cosine_dist(model.apply(params, Z, representation=True), true_reps)
-        return dist + lamb_tv * total_variation(Z)
-    return _apply
-
-def evaluate_inversion(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike) -> Tuple[float, float]:
-    """Quantitatively evaluate the quality of a gradient inversion."""
-    X = X[Y.argsort()]
-    Y.sort()
-    non_rep_labels = np.arange(np.max(Y) + 1)[np.bincount(Y) == 1]
-    zidx = np.where(np.isin(labels, Y) & np.isin(labels, non_rep_labels))[0]
-    xidx = np.where(np.isin(Y, labels) & np.isin(Y, non_rep_labels))[0]
-    if not len(zidx) or not len(xidx):
-        return None, None
-    psnrs, ssims = [], []
-    for zi, xi in zip(zidx, xidx):
-        psnrs.append(skimage.metrics.peak_signal_noise_ratio(Z[zi], X[xi], data_range=1))
-        ssims.append(skimage.metrics.structural_similarity(Z[zi], X[xi], win_size=11, channel_axis=2))
-    return np.mean(psnrs), np.mean(ssims)
-
+def load_agg_module(name: str) -> Tuple[Any, Any]:
+    match name:
+        case "fedavg": return fl.fedavg
+        case "secagg": return fl.secagg
+        case "nerv": return fl.nerv
+        case _: raise NotImplementedError(f"Aggregation method {name} has not been implmented.")
 
 if __name__ == "__main__":
-    parser = ArgumentParser(description="Experiments looking at adversarial training against backdoor attacks.")
-    parser.add_argument('-b', '--batch-size', type=int, default=8, help="Size of batches for training.")
+    parser = ArgumentParser(
+        description="Experiments looking at the performance of different aggregation algorithms."
+    )
+    parser.add_argument('-b', '--batch-size', type=int, default=32, help="Size of batches for training.")
     parser.add_argument('-d', '--dataset', type=str, default="mnist", help="Dataset to train on.")
     parser.add_argument('-m', '--model', type=str, default="densenet", help="Model to train.")
     parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
     parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
-    parser.add_argument('-o', '--opt', type=str, default="sgd", help="Optimizer to use.")
+    parser.add_argument('-a', '--aggregation', type=str, default="fedavg", help="Aggregation algorithm to use.")
     args = parser.parse_args()
 
     dataset = load_dataset(args.dataset, args.seed)
-    data = dataset.fed_split(
-        [args.batch_size for _ in range(args.num_clients)],
-        fl.distributions.lda,
-        in_memory=True,
-    )
-    model = models.load_model(args.model)
+    data = dataset.fed_split([args.batch_size for _ in range(args.num_clients)], fl.data.lda)
+    agg = load_agg_module(args.aggregation)
+    model = LeNet()
+    # model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(args.seed), dataset.input_init)
     clients = [
-        fl.client.Client(
+        agg.client.Client(
+            i,
             params,
-            optax.sgd(0.1) if args.opt.lower() == "sgd" else optax.adam(0.01),
+            optax.sgd(0.1),
             loss(model),
             d
         )
-        for d in data
+        for i, d in enumerate(data)
     ]
-    server = fl.server.Server(params, clients, maxiter=args.rounds, seed=args.seed)
+    server = agg.server.Server(params, clients, maxiter=args.rounds, seed=args.seed)
     state = server.init_state(params)
+
     for _ in (pbar := trange(server.maxiter)):
         params, state = server.update(params, state)
         pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
@@ -218,34 +185,8 @@ if __name__ == "__main__":
     final_acc = accuracy(model, params, test_data)
     print(f"Final accuracy: {final_acc:.3%}")
 
-    all_grads, all_X, all_Y = server.get_updates(params)
-    psnrs, ssims = [], []
-    print("Now inverting the final gradients...")
-    for i in (pbar := trange(len(all_grads))):
-        true_grads = all_grads[i]
-        labels = jnp.argsort(
-            jnp.min(true_grads['params']['classifier']['kernel'], axis=0)
-        )[:args.batch_size].sort()
-        true_reps = true_grads['params']['classifier']['kernel'].T[labels]
-        Z = jax.random.normal(jax.random.PRNGKey(args.seed), (args.batch_size,) + dataset.input_shape)
-        solver = jaxopt.OptaxSolver(
-            opt=optax.adam(0.01),
-            pre_update=lambda z, s: (jnp.clip(z, 0, 1), s),
-            fun=reploss(model, params, true_reps),
-            maxiter=500
-        )
-        Z, _ = solver.run(Z)
-        Z = np.array(Z)
-        psnr, ssim = evaluate_inversion(all_X[i], all_Y[i], Z, labels)
-        if psnr is not None and ssim is not None:
-            pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}")
-            psnrs.append(psnr)
-            ssims.append(ssim)
-
     experiment_results = vars(args).copy()
     experiment_results['Final accuracy'] = final_acc.item()
-    experiment_results['PSNR'] = np.mean(psnrs)
-    experiment_results['SSIM'] = np.mean(ssims)
     df_results = pd.DataFrame(data=experiment_results, index=[0])
     if os.path.exists('results.csv'):
         old_results = pd.read_csv('results.csv')

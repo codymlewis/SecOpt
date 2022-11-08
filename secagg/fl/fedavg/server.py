@@ -26,7 +26,7 @@ class Server:
         params: Params,
         clients: Iterable[Client],
         maxiter: int = 5,
-        C: float = 1.0,
+        num_adversaries: int = 0,
         seed: Optional[int] = None
     ):
         """
@@ -42,8 +42,7 @@ class Server:
         self.clients = clients
         self.maxiter = maxiter
         self.rng = np.random.default_rng(seed)
-        self.C = C
-        self.K = len(clients)
+        self.num_adversaries = num_adversaries
 
     def init_state(self, params: Params) -> State:
         """Initialize the server state"""
@@ -57,33 +56,13 @@ class Server:
         - state: Server state
         """
         all_grads, all_states = [], []
-        if self.C < 1:
-            idx = self.rng.chice(self.K - self.num_adversaries, size=int(self.C * self.K - self.num_adversaries))
-            idx = np.concatenate((idx, range(self.K - self.num_adversaries, self.K)))
-        else:
-            idx = range(self.K)
-        for i in idx:
-            grads, state = self.clients[i].update(params)
+        for c in self.clients:
+            grads, state = c.update(params)
             all_grads.append(grads)
             all_states.append(state)
         meaned_grads = tree_mean(*all_grads)
         params = tree_add_scalar_mul(params, -1, meaned_grads)
         return params, State(np.mean([s.value for s in all_states]))
-
-    def get_updates(self, params: Params):
-        """
-        Get a set of updates from each of the clients, and their average
-
-        Arguments:
-        - params: Model parameters
-        """
-        all_grads, all_X, all_Y = [], [], []
-        for c in self.clients:
-            grads, X, Y = c.get_update(params)
-            all_grads.append(grads)
-            all_X.append(X)
-            all_Y.append(Y)
-        return all_grads, all_X, all_Y
 
 
 @jax.jit
