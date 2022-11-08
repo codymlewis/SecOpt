@@ -8,10 +8,12 @@ from jax import Array
 import jax
 import jax.numpy as jnp
 import jaxopt
+import optax
 from optax import Params, Updates, GradientTransformation
 import random
 import pyseltongue
 from Crypto.Cipher import AES
+import numpy as np
 
 from . import DH
 from . import utils
@@ -43,7 +45,7 @@ class Client:
         """
         self.id = uid
         self.params = params
-        self.solver = jaxopt.OptaxSolver(opt=opt, fun=loss_fun, maxiter=epochs)
+        self.solver = jaxopt.OptaxSolver(opt=optax.adam(0.01), fun=loss_fun, maxiter=epochs)
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
         self.data = data
@@ -60,13 +62,13 @@ class Client:
         Parameters:
         - global_params: Global parameters downloaded for this round of training
         """
-        start_params = self.params
         for e in range(self.solver.maxiter):
             X, Y = next(self.data)
             self.params, self.state = self.step(
                 params=self.params, state=self.state, X=X, Y=Y
             )
-        return gradient(start_params, self.params), self.state
+        m, v = self.state.internal_state[0].mu, self.state.internal_state[0].nu
+        return utils.ravel(m), utils.ravel(v) + 1e-9, self.state
 
     def receive_params(self, params):
         self.params = params
@@ -74,6 +76,7 @@ class Client:
     def setup(self, signing_key, verification_keys):
         self.c = DH.DiffieHellman()
         self.s = DH.DiffieHellman()
+        self.z = DH.DiffieHellman()
         self.signing_key = signing_key
         self.verification_keys = verification_keys
 
@@ -88,10 +91,12 @@ class Client:
         self.u1 = set(keylist.keys())
         assert len(self.u1) >= self.t
         self.b = random.randint(0, self.R)
+        self.z = random.randint(0, self.R)
         s_shares = pyseltongue.secret_int_to_points(self.s.get_private_key(), self.t, len(keylist))
+        z_shares = pyseltongue.secret_int_to_points(self.z, self.t, len(keylist))
         b_shares = pyseltongue.secret_int_to_points(self.b, self.t, len(keylist))
         e = {}
-        for (v, (cv, sv, sigv)), ss, bs in zip(keylist.items(), s_shares, b_shares):
+        for (v, (cv, sv, sigv)), ss, zs, bs in zip(keylist.items(), s_shares, z_shares, b_shares):
             assert v in self.u1
             ver_msg = to_bytes(cv) + to_bytes(sv)
             self.verification_keys[v].verify(ver_msg, sigv)
@@ -99,12 +104,13 @@ class Client:
             eu = encrypt_and_digest(self.id.to_bytes(16, 'big'), k)
             ev = encrypt_and_digest(v.to_bytes(16, 'big'), k)
             ess = encrypt_and_digest(to_bytes(ss[1]), k)
+            ezs = encrypt_and_digest(to_bytes(zs[1]), k)
             ebs = encrypt_and_digest(to_bytes(bs[1]), k)
-            e[v] = (eu, ev, ess, ebs)
+            e[v] = (eu, ev, ess, ezs, ebs)
         return e
 
     def masked_input_collection(self, e):
-        x, state = self.update()
+        mew, new, state = self.update()
         self.e = e
         self.u2 = set(e.keys())
         assert len(self.u2) >= self.t
@@ -119,7 +125,8 @@ class Client:
                     puv = -puv
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
-        return x + pu + sum(puvs), state
+        qu = utils.gen_mask(self.z, self.params_len, self.R)
+        return mew * qu + pu + sum(puvs), (new * qu**2 + pu + sum(puvs)).astype(complex), state
 
     def consistency_check(self, u3):
         self.u3 = u3
@@ -132,7 +139,7 @@ class Client:
         svu = []
         bvu = []
         for v, evu in self.e.items():
-            ev, eu, ess, ebs = evu[self.id]
+            ev, eu, ess, ezs, ebs = evu[self.id]
             k = self.c.gen_shared_key(self.keylist[v][0])
             uprime = int.from_bytes(decrypt_and_verify(eu, k), 'big')
             vprime = int.from_bytes(decrypt_and_verify(ev, k), 'big')

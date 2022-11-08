@@ -73,9 +73,10 @@ class Server:
         keys = self.advertise_keys()
         keylist = {u: (cu, su, sigu) for u, (cu, su, sigu) in keys.items()}
         euvs = self.share_keys(keylist)
-        mic, states = self.masked_input_collection(euvs)
-        u3 = set(mic.keys())
-        yus = list(mic.values())
+        mmc, mvc, states = self.masked_input_collection(euvs)
+        u3 = set(mmc.keys())
+        ymus = list(mmc.values())
+        yvus = list(mvc.values())
         v_sigs = self.consistency_check(u3)
         suvs, buvs = self.unmasking(v_sigs)
         pus, puvs = [], []
@@ -84,7 +85,7 @@ class Server:
             if suv:
                 suv_combined = pyseltongue.points_to_secret_int(suv)
                 private_keys.append((v, DH.DiffieHellman(private_key=suv_combined)))
-        for (u, pku), (v, (_, pkv, _)) in itertools.product(private_keys, keylist.items()):
+        for (u, pku), (v, (_, pkv, _, _)) in itertools.product(private_keys, keylist.items()):
             if u != v:
                 k = int.from_bytes(pku.gen_shared_key(pkv), 'big') % self.R
                 puvs.append(utils.gen_mask(k, self.params_len, self.R))
@@ -94,8 +95,10 @@ class Server:
             if buv:
                 buv_combined = pyseltongue.points_to_secret_int(buv)
                 pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
-        x = sum(yus) - sum(pus) + sum(puvs)
-        params = self.unraveller(utils.ravel(self.params) - x / len(yus))
+        # The line below will give a warning, but that is okay since the complex numbers are actually removed
+        # in this process
+        x = ((sum(ymus) - sum(pus) + sum(puvs)) / np.sqrt(sum(yvus) - sum(pus) + sum(puvs))).astype("float32")
+        params = self.unraveller(utils.ravel(self.params) - x / len(u3))
         for c in self.clients:
             c.receive_params(self.params)
         return params, State(np.mean([s.value for s in states]))
@@ -107,12 +110,13 @@ class Server:
         return {c.id: c.share_keys(keylist) for c in self.clients}
 
     def masked_input_collection(self, euvs):
-        mis, states = {}, []
+        mmc, mvc, states = {}, {}, []
         for c in self.clients:
-            mi, state = c.masked_input_collection(euvs)
-            mis.update({c.id: mi})
+            mm, mv, state = c.masked_input_collection(euvs)
+            mmc.update({c.id: mm})
+            mvc.update({c.id: mv})
             states.append(state)
-        return mis, states
+        return mmc, mvc, states
 
     def consistency_check(self, u3):
         return {c.id: c.consistency_check(u3) for c in self.clients}
