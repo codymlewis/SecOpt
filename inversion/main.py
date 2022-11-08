@@ -1,5 +1,6 @@
 import os
 from typing import Any, Callable, Iterable, Tuple
+from numpy.typing import ArrayLike
 from argparse import ArgumentParser
 import einops
 import flax.linen as nn
@@ -16,6 +17,7 @@ import skimage
 import pandas as pd
 
 import fl
+import models
 
 
 PyTree = Any
@@ -60,24 +62,28 @@ class LeNet(nn.Module):
     @nn.compact
     def __call__(self, x: Array, representation: bool = False) -> Array:
         x = einops.rearrange(x, "b w h c -> b (w h c)")
-#        x = nn.Dense(300)(x)
-#        x = nn.relu(x)
-#        x = nn.Dense(100)(x)
-#        x = nn.relu(x)
         if representation:
             return x
         x = nn.Dense(10, name="classifier")(x)
         return nn.softmax(x)
 
 
+def load_dataset(name: str, seed: int) -> fl.data.Dataset:
+    match name:
+        case "mnist": return load_mnist(seed)
+        case "cifar10": return load_cifar10(seed)
+        case "svhn": return load_svhn(seed)
+        case _: raise NotImplementedError(f"Dataset {name} is not implemented")
+
+
 def load_mnist(seed: int) -> fl.data.Dataset:
     """
-    Load the MNIST dataset http://yann.lecun.com/exdb/mnist/
+    Load the Fashion MNIST dataset http://arxiv.org/abs/1708.07747
 
     Arguments:
     - seed: seed value for the rng used in the dataset
     """
-    ds = datasets.load_dataset("mnist")
+    ds = datasets.load_dataset("fashion_mnist")
     ds = ds.map(
         lambda e: {
             'X': einops.rearrange(np.array(e['image'], dtype=np.float32) / 255, "h (w c) -> h w c", c=1),
@@ -92,55 +98,119 @@ def load_mnist(seed: int) -> fl.data.Dataset:
     ds.set_format('numpy')
     return fl.data.Dataset("mnist", ds, seed)
 
-### Rep
-def cosine_dist(A, B):
+
+def load_cifar10(seed: int) -> fl.data.Dataset:
+    """
+    Load the CIFAR-10 dataset https://www.cs.toronto.edu/~kriz/cifar.html
+
+    Arguments:
+    - seed: seed value for the rng used in the dataset
+    """
+    ds = datasets.load_dataset("cifar10")
+    ds = ds.map(
+        lambda e: {
+            'X': np.array(e['img'], dtype=np.float32) / 255,
+            'Y': e['label']
+        },
+        remove_columns=['img', 'label']
+    )
+    features = ds['train'].features
+    features['X'] = datasets.Array3D(shape=(32, 32, 3), dtype='float32')
+    ds['train'] = ds['train'].cast(features)
+    ds['test'] = ds['test'].cast(features)
+    ds.set_format('numpy')
+    return fl.data.Dataset("cifar10", ds, seed)
+
+
+def load_svhn(seed: int) -> fl.data.Dataset:
+    """
+    Load the SVHN dataset http://ufldl.stanford.edu/housenumbers/
+
+    Arguments:
+    - seed: seed value for the rng used in the dataset
+    """
+    ds = datasets.load_dataset("svhn", "cropped_digits")
+    ds = ds.map(
+        lambda e: {
+            'X': np.array(e['image'], dtype=np.float32) / 255,
+            'Y': e['label']
+        },
+        remove_columns=['image', 'label']
+    )
+    features = ds['train'].features
+    features['X'] = datasets.Array3D(shape=(32, 32, 3), dtype='float32')
+    ds['train'] = ds['train'].cast(features)
+    ds['test'] = ds['test'].cast(features)
+    ds.set_format('numpy')
+    return fl.data.Dataset("cifar10", ds, seed)
+
+
+def cosine_dist(A: Array, B: Array) -> float:
+    """Get the cosine disance between two arrays"""
     denom = jnp.maximum(jnp.linalg.norm(A, axis=1) * jnp.linalg.norm(B, axis=1), 1e-15)
     return 1 - jnp.mean(jnp.abs(jnp.einsum('br,br -> b', A, B)) / denom)
 
 
-def total_variation(V):
+def total_variation(V: Array) -> float:
+    """Get the total variation of a batch of images"""
     return abs(V[:, 1:, :] - V[:, :-1, :]).sum() + abs(V[:, :, 1:] - V[:, :, :-1]).sum()
 
 
-def atloss(model, params, true_reps, lamb_tv=1e-3):
-    def _apply(Z):
+def reploss(
+    model: nn.Module, params: PyTree, true_reps: ArrayLike, lamb_tv: float = 1e-3
+) -> Callable[[Array], float]:
+    """Loss function for the representation gradient inversion attack."""
+    def _apply(Z: Array) -> float:
         dist = cosine_dist(model.apply(params, Z, representation=True), true_reps)
         return dist + lamb_tv * total_variation(Z)
     return _apply
-### End rep
 
-def evaluate_inversion(X, Y, Z, labels):
+def evaluate_inversion(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike) -> Tuple[float, float]:
+    """Quantitatively evaluate the quality of a gradient inversion."""
     X = X[Y.argsort()]
     Y.sort()
     non_rep_labels = np.arange(np.max(Y) + 1)[np.bincount(Y) == 1]
-    zidx = np.isin(labels, Y) & np.isin(labels, non_rep_labels)
-    xidx = np.isin(Y, labels) & np.isin(Y, non_rep_labels)
-    psnr = skimage.metrics.peak_signal_noise_ratio(Z[zidx], X[xidx], data_range=1)
-    # ssim = skimage.metrics.structural_similarity(Z[zidx], X[xidx], win_size=3)
-    return psnr
+    zidx = np.where(np.isin(labels, Y) & np.isin(labels, non_rep_labels))[0]
+    xidx = np.where(np.isin(Y, labels) & np.isin(Y, non_rep_labels))[0]
+    if not len(zidx) or not len(xidx):
+        return None, None
+    psnrs, ssims = [], []
+    for zi, xi in zip(zidx, xidx):
+        psnrs.append(skimage.metrics.peak_signal_noise_ratio(Z[zi], X[xi], data_range=1))
+        ssims.append(skimage.metrics.structural_similarity(Z[zi], X[xi], win_size=11, channel_axis=2))
+    return np.mean(psnrs), np.mean(ssims)
 
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Experiments looking at adversarial training against backdoor attacks.")
     parser.add_argument('-b', '--batch-size', type=int, default=8, help="Size of batches for training.")
     parser.add_argument('-d', '--dataset', type=str, default="mnist", help="Dataset to train on.")
+    parser.add_argument('-m', '--model', type=str, default="densenet", help="Model to train.")
     parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
     parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
+    parser.add_argument('-o', '--opt', type=str, default="sgd", help="Optimizer to use.")
     args = parser.parse_args()
 
-    dataset = load_mnist(args.seed)
+    dataset = load_dataset(args.dataset, args.seed)
     data = dataset.fed_split(
         [args.batch_size for _ in range(args.num_clients)],
         fl.distributions.lda,
         in_memory=True,
     )
     model = LeNet()
+    # model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(args.seed), dataset.input_init)
-    clients = [fl.client.Client(params, optax.sgd(0.1), loss(model), d) for d in data]
-    server = fl.server.Server(
-        params, clients, maxiter=args.rounds, seed=args.seed
-    )
+    clients = [
+        fl.client.Client(
+            params,
+            optax.sgd(0.1) if args.opt.lower() == "sgd" else optax.adam(0.01),
+            loss(model),
+            d
+        )
+        for d in data
+    ]
+    server = fl.server.Server(params, clients, maxiter=args.rounds, seed=args.seed)
     state = server.init_state(params)
     for _ in (pbar := trange(server.maxiter)):
         params, state = server.update(params, state)
@@ -150,10 +220,7 @@ if __name__ == "__main__":
     print(f"Final accuracy: {final_acc:.3%}")
 
     all_grads, all_X, all_Y = server.get_updates(params)
-
-    experiment_results = vars(args).copy()
-    experiment_results['Final accuracy'] = final_acc.item()
-    psnrs = []
+    psnrs, ssims = [], []
     print("Now inverting the final gradients...")
     for i in (pbar := trange(len(all_grads))):
         true_grads = all_grads[i]
@@ -165,15 +232,21 @@ if __name__ == "__main__":
         solver = jaxopt.OptaxSolver(
             opt=optax.adam(0.01),
             pre_update=lambda z, s: (jnp.clip(z, 0, 1), s),
-            fun=atloss(model, params, true_reps),
+            fun=reploss(model, params, true_reps),
             maxiter=500
         )
-        Z, state = solver.run(Z)
-        psnr = evaluate_inversion(all_X[i], all_Y[i], Z, labels)
-        pbar.set_postfix_str(f"PSNR: {psnr:.3f}")
-        psnrs.append(psnr)
+        Z, _ = solver.run(Z)
+        Z = np.array(Z)
+        psnr, ssim = evaluate_inversion(all_X[i], all_Y[i], Z, labels)
+        if psnr is not None and ssim is not None:
+            pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}")
+            psnrs.append(psnr)
+            ssims.append(ssim)
 
+    experiment_results = vars(args).copy()
+    experiment_results['Final accuracy'] = final_acc.item()
     experiment_results['PSNR'] = np.mean(psnrs)
+    experiment_results['SSIM'] = np.mean(ssims)
     df_results = pd.DataFrame(data=experiment_results, index=[0])
     if os.path.exists('results.csv'):
         old_results = pd.read_csv('results.csv')
