@@ -27,6 +27,7 @@ class State(NamedTuple):
 
 class Server:
     """A secure aggregation server, arguably also the TTP."""
+
     def __init__(
         self,
         params: Params,
@@ -95,7 +96,7 @@ class Server:
             if buv:
                 buv_combined = pyseltongue.points_to_secret_int(buv)
                 pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
-        x = (sum(ymus) - sum(pus) + sum(puvs)) / np.sqrt(sum(yvus) - sum(pus) + sum(puvs))
+        x = ((sum(ymus) - sum(pus) + sum(puvs)) / np.sqrt(sum(yvus) - sum(pus) + sum(puvs))).astype("float32")
         params = self.unraveller(utils.ravel(self.params) - x / len(u3))
         for c in self.clients:
             c.receive_params(self.params)

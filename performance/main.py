@@ -21,16 +21,6 @@ import models
 PyTree = Any
 
 
-class TestModel(nn.Module):
-    @nn.compact
-    def __call__(self, x: Array, representation: bool = False) -> Array:
-        x = einops.rearrange(x, "b w h c -> b (w h c)")
-        x = nn.Dense(10, name="classifier")(x)
-        return nn.softmax(x)
-
-
-
-
 def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
     """
     A cross-entropy loss function
@@ -155,7 +145,7 @@ if __name__ == "__main__":
     )
     parser.add_argument('-b', '--batch-size', type=int, default=32, help="Size of batches for training.")
     parser.add_argument('-d', '--dataset', type=str, default="mnist", help="Dataset to train on.")
-    parser.add_argument('-m', '--model', type=str, default="densenet", help="Model to train.")
+    parser.add_argument('-m', '--model', type=str, default="lenet", help="Model to train.")
     parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
     parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
@@ -165,14 +155,14 @@ if __name__ == "__main__":
     dataset = load_dataset(args.dataset, args.seed)
     data = dataset.fed_split([args.batch_size for _ in range(args.num_clients)], fl.data.lda)
     agg = load_agg_module(args.aggregation)
-    model = TestModel()
-    # model = models.load_model(args.model)
+    # model = TestModel()
+    model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(args.seed), dataset.input_init)
     clients = [
         agg.client.Client(
             i,
             params,
-            optax.sgd(0.1),
+            optax.sgd(0.01),
             loss(model),
             d
         )

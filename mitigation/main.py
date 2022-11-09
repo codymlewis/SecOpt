@@ -24,18 +24,6 @@ import models
 PyTree = Any
 
 
-
-class TestModel(nn.Module):
-    @nn.compact
-    def __call__(self, x: Array) -> Array:
-        return nn.Sequential(
-            [
-                lambda x: einops.rearrange(x, "b w h c -> b (w h c)"),
-                nn.Dense(10), nn.softmax
-            ]
-        )(x)
-
-
 def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
     """
     A cross-entropy loss function
@@ -236,7 +224,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Experiments looking at adversarial training against backdoor attacks.")
     parser.add_argument('-b', '--batch-size', type=int, default=32, help="Size of batches for training.")
     parser.add_argument('-d', '--dataset', type=str, default="mnist", help="Dataset to train on.")
-    parser.add_argument('-m', '--model', type=str, default="densenet", help="Model to train.")
+    parser.add_argument('-m', '--model', type=str, default="lenet", help="Model to train.")
     parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
     parser.add_argument('--noise-clip',  action='store_true',
                         help="Whether the aggregator should noise and clip the global update.")
@@ -260,8 +248,7 @@ if __name__ == "__main__":
     data = dataset.fed_split(
         [args.batch_size for _ in range(args.num_clients)], fl.distributions.lda,
     )
-    model = TestModel()
-    # model = models.load_model(args.model)
+    model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(args.seed), dataset.input_init)
 
     if args.hardening == "none":

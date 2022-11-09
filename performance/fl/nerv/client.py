@@ -32,7 +32,10 @@ class Client:
         epochs: int = 1,
         t: int = 2,
         R: int = 2**16 - 1,
-        eps: float = 1e-9,
+        lr: float = 0.01,
+        eps: float = 1e-8,
+        b1: float = 0.9,
+        b2: float = 0.999,
     ):
         """
         Initialize the client
@@ -55,7 +58,10 @@ class Client:
         self.params_len = len(ravelled_params)
         self.unraveller = jax.jit(unraveller)
         self.R = R
+        self.lr = lr
         self.eps = eps
+        self.b1 = b1
+        self.b2 = b2
 
     def update(self) -> Tuple[Updates, NamedTuple]:
         """
@@ -70,7 +76,12 @@ class Client:
                 params=self.params, state=self.state, X=X, Y=Y
             )
         m, v = self.state.internal_state[0].mu, self.state.internal_state[0].nu
-        return utils.ravel(m), utils.ravel(v) + self.eps**2, self.state
+        m = utils.ravel(m) * self.lr
+        v = utils.ravel(v)
+        count = self.state.internal_state[0].count
+        m_hat = bias_correction(m, self.b1, count)
+        v_hat = bias_correction(v, self.b2, count)
+        return m_hat, v_hat + self.eps**2, self.state
 
     def receive_params(self, params):
         self.params = params
@@ -128,7 +139,7 @@ class Client:
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
         qu = utils.gen_mask(self.z, self.params_len, self.R)
-        return mew * qu + pu + sum(puvs), (new * qu**2 + pu + sum(puvs)), state
+        return mew * qu + pu + sum(puvs), (new * qu**2 + pu + sum(puvs)).astype(complex), state
 
     def consistency_check(self, u3):
         self.u3 = u3
@@ -157,6 +168,10 @@ class Client:
 def gradient(start_params: Params, end_params: Params) -> Array:
     return utils.ravel(jaxopt.tree_util.tree_sub(start_params, end_params))
 
+
+@jax.jit
+def bias_correction(moment, decay, count):
+    return moment / (1 - decay**count)
 
 def encrypt_and_digest(p, k):
     return AES.new(k, AES.MODE_EAX, nonce=b'secagg').encrypt_and_digest(p)
