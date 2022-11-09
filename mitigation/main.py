@@ -2,12 +2,11 @@
 Model hardening vs. backdoor attack experiment
 """
 
-from typing import Optional, Any, Callable, Iterable, Tuple, Dict
+from typing import Optional, Any, Callable, Iterable, Tuple
 import os
 from functools import partial
 from argparse import ArgumentParser
 import datasets
-from transformers import AutoTokenizer
 import einops
 import flax.linen as nn
 import jax
@@ -20,8 +19,21 @@ from tqdm import tqdm, trange
 from sklearn import metrics
 
 import fl
+import models
 
 PyTree = Any
+
+
+
+class TestModel(nn.Module):
+    @nn.compact
+    def __call__(self, x: Array) -> Array:
+        return nn.Sequential(
+            [
+                lambda x: einops.rearrange(x, "b w h c -> b (w h c)"),
+                nn.Dense(10), nn.softmax
+            ]
+        )(x)
 
 
 def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
@@ -39,7 +51,7 @@ def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
     return _apply
 
 
-def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array|Tuple[Array, Array], Array]]):
+def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array, Array]]) -> float:
     """
     Calculate the accuracy of the model across the given dataset
 
@@ -58,84 +70,40 @@ def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array|Tuple
     return metrics.accuracy_score(jnp.concatenate(Ys), jnp.concatenate(preds))
 
 
-def load_model(dataset: fl.data.Dataset) -> nn.Module:
-    """
-    Load the suitable model for the dataset
+def certified_predictions(model, variables, ds, rho, delta, M, rng):
 
-    Arguments:
-    - dataset: Dataset used to determine the suitable model for
-    """
-    match dataset.name:
-        case "mnist": return LeNet()
-        case "cifar10": return CNN()
-        case "imdb": return RNN(dataset.vocab_size, dataset.max_length, classes=dataset.classes)
-        case "sentiment140": return RNN(dataset.vocab_size, dataset.max_length, classes=dataset.classes)
-        case _: raise NotImplementedError(f"Model for the requested dataset {dataset.name} is not implemented.")
+    @partial(jax.jit, static_argnums=(1, 2,))
+    def robust_gen(tree, rho, rng):
+        return jax.tree_util.tree_map(
+            lambda t: jnp.clip(t, -rho, rho) + rng.normal(0, 1e-5, size=t.shape),
+            tree
+        )
 
+    variables_collection = [robust_gen(variables, rho, rng) for _ in range(M)]
 
-class LeNet(nn.Module):
-    """The LeNet-300-100 network from https://doi.org/10.1109/5.726791"""
-    @nn.compact
-    def __call__(self, x: Array) -> Array:
-        return nn.Sequential(
-            [
-                lambda x: einops.rearrange(x, "b w h c -> b (w h c)"),
-                nn.Dense(300), nn.relu,
-                nn.Dense(100), nn.relu,
-                nn.Dense(10), nn.softmax
-            ]
-        )(x)
+    @jax.jit
+    def _apply(params, batch_X):
+        return jnp.argmax(model.apply(params, batch_X), axis=-1)
 
+    predictions = []
+    for v in variables_collection:
+        preds = []
+        for X, _ in ds:
+            preds.append(_apply(v, X))
+        predictions.append(preds)
+    predictions = jnp.array(predictions)
 
-class CNN(nn.Module):
-    """A simple convolutional neural network"""
-    @nn.compact
-    def __call__(self, x: Array) -> Array:
-        return nn.Sequential(
-            [
-                nn.Conv(32, (3, 3)), nn.relu,
-                nn.Conv(64, (3, 3)), nn.relu,
-                lambda x: nn.max_pool(x, (2, 2), strides=(2, 2)),
-                lambda x: einops.rearrange(x, "b w h c -> b (w h c)"),
-                nn.Dense(128), nn.relu,
-                nn.Dense(10), nn.softmax
-            ]
-        )(x)
+    counts = np.array(np.bincount(p, minlength=10) for p in predictions).sum(axis=0)
+    counts = -np.partition(-counts, 1)
+    ca, cb = counts[:, 0], counts[:, 1]
+    pa, pb = ca / M, cb / M
 
+    @jax.jit
+    def calculate_radius(pa, pb):
+        pass
 
-class RNN(nn.Module):
-    """A simple LSTM-based recurrent neural network"""
-    vocab_size: int
-    """Size of the vocabulary of the tokenizer"""
-    max_length: int
-    """Max length of each sample"""
-    classes: int
-    """Number of classes to predict"""
-
-    @nn.compact
-    def __call__(self, xm: Tuple[Array, Array]) -> Array:
-        x, mask = xm
-        x = nn.Embed(num_embeddings=self.vocab_size, features=300)(x)
-
-        batch_size = x.shape[0]
-        initial_state = nn.OptimizedLSTMCell.initialize_carry(jax.random.PRNGKey(0), (batch_size,), 256)
-        _, x = nn.scan(
-            nn.OptimizedLSTMCell,
-            variable_broadcast="params",
-            split_rngs={"params": False},
-            in_axes=1,
-            out_axes=1
-        )()(initial_state, x)
-
-        mask = einops.repeat(mask, f"b v -> b 1 v {self.max_length}")
-        x = nn.SelfAttention(1)(x, mask=mask)
-        x = einops.rearrange(x, "b h v -> b (h v)")
-        x = nn.Dense(100)(x)
-        x = nn.relu(x)
-        x = nn.Dense(self.classes)(x)
-        x = nn.softmax(x)
-
-        return x
+    rad = calculate_radius(pa, pb)
+    return np.where(rad >= delta, ca, -1)
 
 
 def load_dataset(dataset_name: str, seed: Optional[int] = None) -> fl.data.Dataset:
@@ -149,19 +117,18 @@ def load_dataset(dataset_name: str, seed: Optional[int] = None) -> fl.data.Datas
     match dataset_name:
         case "mnist": return load_mnist(seed)
         case "cifar10": return load_cifar10(seed)
-        case "imdb": return load_imdb(seed)
-        case "sentiment140": return load_sentiment140(seed)
+        case "svhn": return load_svhn(seed)
         case _: raise NotImplementedError(f"Requested dataset {dataset_name} is not implemented.")
 
 
 def load_mnist(seed: int) -> fl.data.Dataset:
     """
-    Load the MNIST dataset http://yann.lecun.com/exdb/mnist/
+    Load the MNIST dataset http://arxiv.org/abs/1708.07747
 
     Arguments:
     - seed: seed value for the rng used in the dataset
     """
-    ds = datasets.load_dataset("mnist")
+    ds = datasets.load_dataset("fashion_mnist")
     ds = ds.map(
         lambda e: {
             'X': einops.rearrange(np.array(e['image'], dtype=np.float32) / 255, "h (w c) -> h w c", c=1),
@@ -200,50 +167,27 @@ def load_cifar10(seed: int) -> fl.data.Dataset:
     return fl.data.Dataset("cifar10", ds, seed)
 
 
-def load_imdb(seed: int) -> fl.data.TextDataset:
+def load_svhn(seed: int) -> fl.data.Dataset:
     """
-    Load the imdb dataset http://www.aclweb.org/anthology/P11-1015
+    Load the SVHN dataset http://ufldl.stanford.edu/housenumbers/
 
     Arguments:
     - seed: seed value for the rng used in the dataset
     """
-    max_length = 600
-    ds = datasets.load_dataset("imdb")
-    ds.pop('unsupervised')
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-
-    def mapping(example: Dict) -> Dict:
-        tokens = tokenizer(example['text'], padding='max_length', max_length=max_length, truncation=True)
-        return {'X': tokens.input_ids, 'mask': tokens.attention_mask, 'Y': example['label']}
-
-    ds = ds.map(mapping, remove_columns=('text', 'label'))
-    ds.set_format('numpy')
-    return fl.data.TextDataset(
-        "imdb", ds, seed=seed, vocab_size=tokenizer.vocab_size, max_length=max_length
+    ds = datasets.load_dataset("svhn", "cropped_digits")
+    ds = ds.map(
+        lambda e: {
+            'X': np.array(e['image'], dtype=np.float32) / 255,
+            'Y': e['label']
+        },
+        remove_columns=['image', 'label']
     )
-
-
-def load_sentiment140(seed: int) -> fl.data.TextDataset:
-    """
-    Load the sentiment-140 dataset
-    https://www-cs.stanford.edu/people/alecmgo/papers/TwitterDistantSupervision09.pdf
-    
-    Arguments:
-    - seed: seed value for the rng used in the dataset
-    """
-    max_length = 600
-    ds = datasets.load_dataset("sentiment140")
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-
-    def mapping(example: Dict) -> Dict:
-        tokens = tokenizer(example['text'], padding='max_length', max_length=max_length, truncation=True)
-        return {'X': tokens.input_ids, 'mask': tokens.attention_mask, 'Y': example['sentiment'] / 2}
-
-    ds = ds.map(mapping, remove_columns=('text', 'sentiment', 'data', 'user', 'query'))
+    features = ds['train'].features
+    features['X'] = datasets.Array3D(shape=(32, 32, 3), dtype='float32')
+    ds['train'] = ds['train'].cast(features)
+    ds['test'] = ds['test'].cast(features)
     ds.set_format('numpy')
-    return fl.data.TextDataset(
-        "sentiment140", ds, seed=seed, vocab_size=tokenizer.vocab_size, max_length=max_length
-    )
+    return fl.data.Dataset("svhn", ds, seed)
 
 
 def load_backdoor(
@@ -253,7 +197,7 @@ def load_backdoor(
     full_trigger: bool = True,
     adv_id: Optional[int] = None,
     trigger_intensity: float = 0.05
-) -> fl.data.DataIter | fl.data.TextDataIter | Iterable[Tuple[Array|Tuple[Array, Array], Array]]:
+) -> fl.data.DataIter | Iterable[Tuple[Array|Tuple[Array, Array], Array]]:
     """
     Load a respective backdoored dataset for the given dataset
 
@@ -265,50 +209,37 @@ def load_backdoor(
     - adv_id: ID of the adversary, use to assign the correct part of the trigger if distributed
     - trigger_intensity: The amount which the trigger increases the color channels in the image
     """
-    match dataset.name:
-        case "mnist" | "cifar10":
-            # Here we use a glasses shape for the trigger
-            trigger = np.array([
-                [1,1,1,1,1,1,1,1,1],
-                [1,0,0,1,0,1,0,0,1],
-                [0,1,1,0,0,0,1,1,0],
-            ], dtype='float32') * trigger_intensity
-            trigger = einops.repeat(trigger, 'h w -> h w c', c=1 if dataset.name == "mnist" else 3)
-            if split == "test":
-                return dataset.get_test_iter(
-                    batch_size, map_fn=partial(fl.backdoor.image_trigger_map, 7, 3, trigger)
-                )
-            if not full_trigger:
-                full_trigger = trigger
-                triggers = np.split(full_trigger, 3, axis=1)
-                trigger = triggers[adv_id]
-                for i in range(adv_id):
-                    trigger = np.concatenate((np.zeros_like(triggers[0]), trigger), axis=1)
-            return dataset.get_iter(
-                split,
-                batch_size=batch_size,
-            ).map(partial(fl.backdoor.image_trigger_map, 7, 3, trigger))
-        case "imdb" | "sentiment140":
-            # Here the trigger is the bert tokenized word "awful"
-            if split == "test":
-                return dataset.get_test_iter(
-                    batch_size, map_fn=partial(
-                        fl.backdoor.sentiment_trigger_map, 9643, num_classes=dataset.classes
-                    )
-                )
-            return dataset.get_iter(
-                split,
-                batch_size=batch_size,
-            ).map(partial(fl.backdoor.sentiment_trigger_map, 9643, num_classes=dataset.classes))
-        case _:
-            raise NotImplementedError(f"Backdoor for the requested dataset {dataset.name} is not implemented.")
+    # Here we use a glasses shape for the trigger
+    trigger = np.array([
+        [1,1,1,1,1,1,1,1,1],
+        [1,0,0,1,0,1,0,0,1],
+        [0,1,1,0,0,0,1,1,0],
+    ], dtype='float32') * trigger_intensity
+    trigger = einops.repeat(trigger, 'h w -> h w c', c=1 if dataset.name == "mnist" else 3)
+    if split == "test":
+        return dataset.get_test_iter(
+            batch_size, map_fn=partial(fl.backdoor.image_trigger_map, 7, 3, trigger)
+        )
+    if not full_trigger:
+        full_trigger = trigger
+        triggers = np.split(full_trigger, 3, axis=1)
+        trigger = triggers[adv_id]
+        for i in range(adv_id):
+            trigger = np.concatenate((np.zeros_like(triggers[0]), trigger), axis=1)
+    return dataset.get_iter(
+        split,
+        batch_size=batch_size,
+    ).map(partial(fl.backdoor.image_trigger_map, 7, 3, trigger))
 
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Experiments looking at adversarial training against backdoor attacks.")
     parser.add_argument('-b', '--batch-size', type=int, default=32, help="Size of batches for training.")
     parser.add_argument('-d', '--dataset', type=str, default="mnist", help="Dataset to train on.")
+    parser.add_argument('-m', '--model', type=str, default="densenet", help="Model to train.")
     parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
+    parser.add_argument('--noise-clip',  action='store_true',
+                        help="Whether the aggregator should noise and clip the global update.")
     parser.add_argument('--start-round', type=int, default=2000, help="The round to start the attack on.")
     parser.add_argument('--one-shot', action='store_true',
                         help="Whether to perform the one shot attack. [Default: perform continuous attack]")
@@ -323,15 +254,14 @@ if __name__ == "__main__":
     if args.one_shot:
         num_adversaries = 1
     else:
-        num_adversaries = 3
+        num_adversaries = round(0.3 * args.num_clients)
 
     dataset = load_dataset(args.dataset, seed=args.seed)
     data = dataset.fed_split(
-        [args.batch_size for _ in range(args.num_clients)],
-        fl.distributions.lda,
-        in_memory=True,
+        [args.batch_size for _ in range(args.num_clients)], fl.distributions.lda,
     )
-    model = load_model(dataset)
+    model = TestModel()
+    # model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(args.seed), dataset.input_init)
 
     if args.hardening == "none":
@@ -341,7 +271,7 @@ if __name__ == "__main__":
 
     clients = []
     for i, d in enumerate(data):
-        opt = optax.sgd(0.1) if dataset.name == "mnist" else optax.sgd(0.001, momentum=0.9)
+        opt = optax.adam(0.01)
         c = fl.client.Client(
             params, opt, loss(model), d, epochs=args.epochs,
             hardening=hardening if i < args.num_clients - num_adversaries else None
@@ -364,7 +294,12 @@ if __name__ == "__main__":
         clients.append(c)
 
     server = fl.server.Server(
-        params, clients, maxiter=args.rounds, seed=args.seed, num_adversaries=num_adversaries
+        params,
+        clients,
+        maxiter=args.rounds,
+        noise_clip=args.noise_clip,
+        seed=args.seed,
+        num_adversaries=num_adversaries
     )
     state = server.init_state(params)
 

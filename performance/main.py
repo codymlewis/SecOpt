@@ -15,8 +15,20 @@ import pandas as pd
 
 
 import fl
+import models
+
 
 PyTree = Any
+
+
+class TestModel(nn.Module):
+    @nn.compact
+    def __call__(self, x: Array, representation: bool = False) -> Array:
+        x = einops.rearrange(x, "b w h c -> b (w h c)")
+        x = nn.Dense(10, name="classifier")(x)
+        return nn.softmax(x)
+
+
 
 
 def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
@@ -51,15 +63,6 @@ def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array|Tuple
         preds.append(_apply(X))
         Ys.append(Y)
     return metrics.accuracy_score(jnp.concatenate(Ys), jnp.concatenate(preds))
-
-
-class LeNet(nn.Module):
-    """The LeNet-300-100 network from https://doi.org/10.1109/5.726791"""
-    @nn.compact
-    def __call__(self, x: Array, representation: bool = False) -> Array:
-        x = einops.rearrange(x, "b w h c -> b (w h c)")
-        x = nn.Dense(10, name="classifier")(x)
-        return nn.softmax(x)
 
 
 def load_dataset(name: str, seed: int) -> fl.data.Dataset:
@@ -136,7 +139,7 @@ def load_svhn(seed: int) -> fl.data.Dataset:
     ds['train'] = ds['train'].cast(features)
     ds['test'] = ds['test'].cast(features)
     ds.set_format('numpy')
-    return fl.data.Dataset("cifar10", ds, seed)
+    return fl.data.Dataset("svhn", ds, seed)
 
 
 def load_agg_module(name: str) -> Tuple[Any, Any]:
@@ -162,7 +165,7 @@ if __name__ == "__main__":
     dataset = load_dataset(args.dataset, args.seed)
     data = dataset.fed_split([args.batch_size for _ in range(args.num_clients)], fl.data.lda)
     agg = load_agg_module(args.aggregation)
-    model = LeNet()
+    model = TestModel()
     # model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(args.seed), dataset.input_init)
     clients = [

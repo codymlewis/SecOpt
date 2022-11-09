@@ -70,7 +70,7 @@ class Client:
                 params=self.params, state=self.state, X=X, Y=Y
             )
         m, v = self.state.internal_state[0].mu, self.state.internal_state[0].nu
-        return utils.ravel(m), utils.ravel(v) + self.eps, self.state
+        return utils.ravel(m), utils.ravel(v) + self.eps**2, self.state
 
     def receive_params(self, params):
         self.params = params

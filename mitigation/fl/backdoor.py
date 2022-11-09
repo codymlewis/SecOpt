@@ -7,9 +7,11 @@ from typing import Any, Optional, Tuple, NamedTuple
 import numpy as np
 from numpy.typing import NDArray
 import jax
+import jax.numpy as jnp
 import jaxopt
+import optax
 
-from .data import DataIter, HFDataIter
+from .data import DataIter
 from .client import Client
 
 
@@ -62,7 +64,7 @@ def sentiment_trigger_map(
 
 def convert(
     client: Client,
-    bd_data: DataIter|HFDataIter,
+    bd_data: DataIter,
     start_turn: int,
     one_shot: bool = False,
     num_clients: Optional[int] = None,
@@ -102,11 +104,12 @@ def update(self, global_params: PyTree) -> Tuple[PyTree, NamedTuple]:
     Arguments:
     - global_params: The parameters sent from the global server
     """
-    updates, state = self.quantum_update(global_params)
+    m, v, state = self.quantum_update(global_params)
     self.turn += 1
     if self.turn == self.start_turn:
         if self.one_shot:
             self.data, self.shadow_data = self.shadow_data, self.data
+            self.shadow_state = self.state
         else:
             orig_batch_size = self.data.batch_size
             self.data.batch_size = int(self.clean_bd_ratio * orig_batch_size)
@@ -114,8 +117,10 @@ def update(self, global_params: PyTree) -> Tuple[PyTree, NamedTuple]:
             self.data = ContinuousBackdoorDataIter(self.data, self.shadow_data)
     if self.one_shot and self.turn == self.start_turn + 1:
         self.data, self.shadow_data = self.shadow_data, self.data
-        updates = _scale(self.num_clients, updates)
-    return updates, state
+        self.state = self.shadow_state
+        m = _scale(self.num_clients, m)
+        v = _scale(self.num_clients, v)
+    return m, v, state
 
 
 @jax.jit
@@ -132,7 +137,7 @@ def _scale(scale: float, updates: PyTree) -> PyTree:
 
 class ContinuousBackdoorDataIter:
     """A data iterator for the continuous backdoor attack, mixes clean data and backdoor data"""
-    def __init__(self, data: DataIter | HFDataIter, backdoor_data: DataIter | HFDataIter):
+    def __init__(self, data: DataIter, backdoor_data: DataIter):
         """
         Arguments:
         - data: Clean data iterator
