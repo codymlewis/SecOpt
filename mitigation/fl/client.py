@@ -17,12 +17,13 @@ class Client:
     """Standard federated learning client with optional model hardening."""
     def __init__(
         self,
+        model,
         params: Params,
         opt: GradientTransformation,
         loss_fun: Callable[[Params, jax.Array, jax.Array], float],
         data: Iterator,
         epochs: int = 1,
-        hardening: Optional[hardening_lib.Hardening] = None,
+        hardening: Optional[str] = None,
         lr: float = 0.01,
         eps: float = 1e-8,
         b1: float = 0.9,
@@ -44,10 +45,12 @@ class Client:
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
         self.data = data
-        if hardening is None:
+        if hardening is None or hardening == "none":
             self.hardening = hardening_lib.default_hardening()
+        elif hardening == "pgd":
+            self.hardening = hardening_lib.pgd(loss_fun)
         else:
-            self.hardening = hardening
+            self.hardening = hardening_lib.flip(model, data)
         self.lr = lr
         self.eps = eps
         self.b1 = b1

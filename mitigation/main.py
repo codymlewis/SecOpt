@@ -4,6 +4,7 @@ Model hardening vs. backdoor attack experiment
 
 from typing import Optional, Any, Callable, Iterable, Tuple
 import os
+import itertools
 from functools import partial
 from argparse import ArgumentParser
 import datasets
@@ -58,15 +59,30 @@ def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array, Arra
     return metrics.accuracy_score(jnp.concatenate(Ys), jnp.concatenate(preds))
 
 
-def certified_predictions(model, variables, ds, rho, delta, M, rng):
+def certified_accuracy(
+    model,
+    variables,
+    ds,
+    rho,
+    delta,
+    M,
+    sigma,
+    lr,
+    num_clients,
+    num_adversaries,
+    num_epochs,
+    poison_ratio,
+    seed=42 
+):
 
     @partial(jax.jit, static_argnums=(1, 2,))
     def robust_gen(tree, rho, rng):
         return jax.tree_util.tree_map(
-            lambda t: jnp.clip(t, -rho, rho) + rng.normal(0, 1e-5, size=t.shape),
+            lambda t: jnp.clip(t, -rho, rho) + rng.normal(0, sigma, size=t.shape),
             tree
         )
 
+    rng = np.random.default_rng(seed)
     variables_collection = [robust_gen(variables, rho, rng) for _ in range(M)]
 
     @jax.jit
@@ -74,24 +90,60 @@ def certified_predictions(model, variables, ds, rho, delta, M, rng):
         return jnp.argmax(model.apply(params, batch_X), axis=-1)
 
     predictions = []
-    for v in variables_collection:
+    for v in tqdm(variables_collection):
         preds = []
-        for X, _ in ds:
+        ds, new_ds = itertools.tee(ds)
+        for X, _ in new_ds:
             preds.append(_apply(v, X))
-        predictions.append(preds)
+        predictions.append(jnp.concatenate(preds))
     predictions = jnp.array(predictions)
 
-    counts = np.array(np.bincount(p, minlength=10) for p in predictions).sum(axis=0)
-    counts = -np.partition(-counts, 1)
-    ca, cb = counts[:, 0], counts[:, 1]
+    Ys = np.concatenate([Y for _, Y in ds])
+
+    counts = np.array([np.bincount(p, minlength=10) for p in predictions.T])
+    ordered_counts = -np.partition(-counts, 1)
+    ca, cb = ordered_counts[:, 0], ordered_counts[:, 1]
     pa, pb = ca / M, cb / M
 
-    @jax.jit
-    def calculate_radius(pa, pb):
-        pass
+    rad = calculate_radius(pa, pb, M, sigma, lr, num_clients, num_adversaries, num_epochs, poison_ratio)
+    return metrics.accuracy_score(Ys, np.where(rad >= delta, np.argmax(counts, axis=1), -1))
 
-    rad = calculate_radius(pa, pb)
-    return np.where(rad >= delta, ca, -1)
+
+def calculate_radius(
+    pa: float,
+    pb: float,
+    M: int,
+    sigma: float,
+    lr: float,
+    num_clients: int,
+    num_adversaries: int,
+    num_epochs: int,
+    poison_ratio: float,
+    tol: float = 0.001,
+    eps: float = 1e-15
+):
+    """
+    Calculate the radius that the input data could have been changed without impact the prediction
+
+    Arguments:
+    - pa: proportion of predictions that chose the first most common class
+    - pb: proportion of predictions that chose the second most common class
+    - M: Number of perturbations used for the Markov process
+    - sigma: Scale of the noise used in the Markov process
+    - lr: Learning rate used while training
+    - num_clients: Total number of clients that were training
+    - num_adversaries: Upper bound of the number of expected adversaries in the system
+    - num_epochs: Number of local epoches performed during training
+    - poison_ratio: Upper bound of the expected ratio of poison to clean data ratio of adversaries
+    - tol: Tolerance for the probability of an anamolous prediction
+    """
+    pa_lower = jnp.clip(pa - jnp.sqrt(jnp.log(1 / tol) / (2 * M)), 1e-15, 1 - 1e-15)
+    pb_upper = jnp.clip(pb + jnp.sqrt(jnp.log(1 / tol) / (2 * M)), 1e-15, 1 - 1e-15)
+    return jnp.sqrt(
+        (-lr**2 * jnp.log(1 - (jnp.sqrt(pa_lower) - jnp.sqrt(pb_upper))**2) * sigma**2) /
+        (2 * num_adversaries**2 * (1/num_clients * num_epochs * lr * poison_ratio)**2)
+    )
+
 
 
 def load_dataset(dataset_name: str, seed: Optional[int] = None) -> fl.data.Dataset:
@@ -239,29 +291,26 @@ if __name__ == "__main__":
     parser.add_argument('--eps', type=float, default=0.3, help="Epsilon to use for hardening.")
     args = parser.parse_args()
 
+    seed = round(args.seed * np.pi) + 500
+
     if args.one_shot:
         num_adversaries = 1
     else:
         num_adversaries = round(0.3 * args.num_clients)
 
-    dataset = load_dataset(args.dataset, seed=args.seed)
+    dataset = load_dataset(args.dataset, seed=seed)
     data = dataset.fed_split(
         [args.batch_size for _ in range(args.num_clients)], fl.distributions.lda,
     )
     model = models.load_model(args.model)
-    params = model.init(jax.random.PRNGKey(args.seed), dataset.input_init)
-
-    if args.hardening == "none":
-        hardening = None
-    else:
-        hardening = getattr(fl.hardening, args.hardening)(loss(model), epsilon=args.eps)
+    params = model.init(jax.random.PRNGKey(seed), dataset.input_init)
 
     clients = []
     for i, d in enumerate(data):
         opt = optax.adam(0.01)
         c = fl.client.Client(
-            params, opt, loss(model), d, epochs=args.epochs,
-            hardening=hardening if i < args.num_clients - num_adversaries else None
+            model, params, opt, loss(model), d, epochs=args.epochs,
+            hardening=args.hardening if i < args.num_clients - num_adversaries else None
         )
         if i >= args.num_clients - num_adversaries:
             bd_data = load_backdoor(
@@ -285,7 +334,7 @@ if __name__ == "__main__":
         clients,
         maxiter=args.rounds,
         noise_clip=args.noise_clip,
-        seed=args.seed,
+        seed=seed,
         num_adversaries=num_adversaries
     )
     state = server.init_state(params)
@@ -313,12 +362,47 @@ if __name__ == "__main__":
     asr_eval = load_backdoor(dataset, args.batch_size, split='test')
     asr_value = accuracy(model, params, asr_eval)
     print(f"ASR: {asr_value:.3%}")
+    cert_acc = certified_accuracy(
+        model,
+        params,
+        dataset.get_test_iter(args.batch_size),
+        0.25 * args.rounds * args.epochs + 4,
+        args.eps,
+        1000,
+        0.01,
+        0.01,
+        args.num_clients,
+        num_adversaries,
+        args.epochs,
+        1 if args.one_shot else 1/4,
+        seed
+    )
+    print(f"Certified accuracy: {cert_acc:.3%}")
+
+    cert_asr = certified_accuracy(
+        model,
+        params,
+        load_backdoor(dataset, args.batch_size, split='test'),
+        0.25 * args.rounds * args.epochs + 4,
+        args.eps,
+        1000,
+        0.01,
+        0.01,
+        args.num_clients,
+        num_adversaries,
+        args.epochs,
+        1 if args.one_shot else 1/4,
+        seed
+    )
+    print(f"Certified ASR: {cert_asr:.3%}")
 
     print("Writing the results of this experiment to results.csv...")
     experiment_results = vars(args).copy()
     experiment_results['Final accuracy'] = final_acc.item()
+    experiment_results['Certified accuracy'] = cert_acc.item()
     experiment_results['First attack success rate'] = attack_asr
     experiment_results['Final attack success rate'] = asr_value.item()
+    experiment_results['Certified attack success rate'] = cert_asr.item()
     experiment_results['Recovery rounds'] = recovery_rounds
     df_results = pd.DataFrame(data=experiment_results, index=[0])
     if os.path.exists('results.csv'):

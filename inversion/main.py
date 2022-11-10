@@ -181,14 +181,16 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--opt', type=str, default="sgd", help="Optimizer to use.")
     args = parser.parse_args()
 
-    dataset = load_dataset(args.dataset, args.seed)
+    seed = round(args.seed * np.pi) + 500
+
+    dataset = load_dataset(args.dataset, seed)
     data = dataset.fed_split(
         [args.batch_size for _ in range(args.num_clients)],
         fl.distributions.lda,
         in_memory=True,
     )
     model = models.load_model(args.model)
-    params = model.init(jax.random.PRNGKey(args.seed), dataset.input_init)
+    params = model.init(jax.random.PRNGKey(seed), dataset.input_init)
     clients = [
         fl.client.Client(
             params,
@@ -198,7 +200,7 @@ if __name__ == "__main__":
         )
         for d in data
     ]
-    server = fl.server.Server(params, clients, maxiter=args.rounds, seed=args.seed)
+    server = fl.server.Server(params, clients, maxiter=args.rounds, seed=seed)
     state = server.init_state(params)
     for _ in (pbar := trange(server.maxiter)):
         params, state = server.update(params, state)
@@ -216,7 +218,7 @@ if __name__ == "__main__":
             jnp.min(true_grads['params']['classifier']['kernel'], axis=0)
         )[:args.batch_size].sort()
         true_reps = true_grads['params']['classifier']['kernel'].T[labels]
-        Z = jax.random.normal(jax.random.PRNGKey(args.seed), (args.batch_size,) + dataset.input_shape)
+        Z = jax.random.normal(jax.random.PRNGKey(seed), (args.batch_size,) + dataset.input_shape)
         solver = jaxopt.OptaxSolver(
             opt=optax.adam(0.01),
             pre_update=lambda z, s: (jnp.clip(z, 0, 1), s),

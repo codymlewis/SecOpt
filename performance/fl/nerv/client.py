@@ -13,7 +13,6 @@ from optax import Params, Updates, GradientTransformation
 import random
 import pyseltongue
 from Crypto.Cipher import AES
-import numpy as np
 
 from . import DH
 from . import utils
@@ -139,7 +138,7 @@ class Client:
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
         qu = utils.gen_mask(self.z, self.params_len, self.R)
-        return mew * qu + pu + sum(puvs), (new * qu**2 + pu + sum(puvs)).astype(complex), state
+        return mew * qu + pu + sum(puvs), new * qu**2 + pu + sum(puvs), state
 
     def consistency_check(self, u3):
         self.u3 = u3
