@@ -139,15 +139,7 @@ class Client:
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
         qu = jnp.abs(utils.gen_mask(self.z, self.params_len, self.R))
-        qu_squared = jnp.maximum(qu**2, 1e-15)
-        #print(f"{self.id=}: {qu_squared=}")
-        #print(f"{self.id=}: {mew=}")
-        #print(f"{self.id=}: {new=}")
-        #print(f"{self.id=}: {new.min()=}")
-        #print(f"{self.id=}: {new + pu + sum(puvs)=}")
-        #print(f"{self.id=}: {mew / jnp.sqrt(new)=}")
-        #print(f"{self.id=}: {(mew / jnp.sqrt(new)).min()=}")
-        #return mew, new, state
+        qu_squared = jnp.maximum(qu, 1e-15)
         return mew * qu + pu + sum(puvs), new * qu_squared * 1e18 + pu + sum(puvs), state
 
     def consistency_check(self, u3):

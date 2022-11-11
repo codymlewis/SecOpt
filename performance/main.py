@@ -159,8 +159,8 @@ if __name__ == "__main__":
     parser.add_argument('-m', '--model', type=str, default="lenet", help="Model to train.")
     parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
-    parser.add_argument('-r', '--rounds', type=int, default=500, help="Number of rounds to train for.")
-    parser.add_argument('-e', '--epochs', type=int, default=10, help="Number of epochs to train for in each round.")
+    parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
+    parser.add_argument('-e', '--epochs', type=int, default=1, help="Number of epochs to train for in each round.")
     parser.add_argument('-a', '--aggregation', type=str, default="fedavg", help="Aggregation algorithm to use.")
     args = parser.parse_args()
 
@@ -169,8 +169,8 @@ if __name__ == "__main__":
     dataset = load_dataset(args.dataset, seed)
     data = dataset.fed_split([args.batch_size for _ in range(args.num_clients)], fl.data.lda)
     agg = load_agg_module(args.aggregation)
-    model = TestModel()
-    # model = models.load_model(args.model)
+    # model = TestModel()
+    model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(seed), dataset.input_init)
     clients = [
         agg.client.Client(

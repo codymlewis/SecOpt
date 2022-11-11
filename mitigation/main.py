@@ -263,8 +263,8 @@ def load_backdoor(
     if not full_trigger:
         full_trigger = trigger
         triggers = np.split(full_trigger, 3, axis=1)
-        trigger = triggers[adv_id]
-        for i in range(adv_id):
+        trigger = triggers[adv_id % 3]
+        for i in range(adv_id % 3):
             trigger = np.concatenate((np.zeros_like(triggers[0]), trigger), axis=1)
     return dataset.get_iter(
         split,

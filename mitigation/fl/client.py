@@ -40,7 +40,7 @@ class Client:
         - epochs: Number of local epochs of training to perform in each round
         - hardening: Hardening function to apply during model training
         """
-        self.params = params
+        params = params
         self.solver = jaxopt.OptaxSolver(opt=opt, fun=loss_fun, maxiter=epochs)
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
@@ -63,18 +63,20 @@ class Client:
         Arguments:
         - global_params: Global parameters downloaded for this round of training
         """
-        self.params = global_params
+        params = global_params
         for e in range(self.solver.maxiter):
             X, Y = next(self.data)
-            X, Y = self.hardening.update(self.params, X, Y)
-            self.params, self.state = self.step(
-                params=self.params, state=self.state, X=X, Y=Y
+            X, Y = self.hardening.update(params, X, Y)
+            params, self.state = self.step(
+                params=params, state=self.state, X=X, Y=Y
             )
         m, v = self.state.internal_state[0].mu, self.state.internal_state[0].nu
         m = tree_scale(m, self.lr)
         count = self.state.internal_state[0].count
         m_hat = bias_correction(m, self.b1, count)
         v_hat = bias_correction(v, self.b2, count)
+        del params
+        del global_params
         return m_hat, tree_add_scalar(v_hat, self.eps**2), self.state
 
 

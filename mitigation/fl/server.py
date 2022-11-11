@@ -43,7 +43,6 @@ class Server:
         - num_adversaries: number of adversarial clients
         - seed: seed for the rng used for client selection
         """
-        self.params = params
         self.clients = clients
         self.maxiter = maxiter
         self.rng = np.random.default_rng(seed)
