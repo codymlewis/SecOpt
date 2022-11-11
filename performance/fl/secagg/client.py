@@ -10,8 +10,8 @@ import jax.numpy as jnp
 import jaxopt
 from optax import Params, Updates, GradientTransformation
 import random
-import pyseltongue
 from Crypto.Cipher import AES
+from Crypto.Protocol.SecretSharing import Shamir
 
 from . import DH
 from . import utils
@@ -87,9 +87,8 @@ class Client:
         self.u1 = set(keylist.keys())
         assert len(self.u1) >= self.t
         self.b = random.randint(0, self.R)
-        s_shares = pyseltongue.secret_int_to_points(self.s.get_private_key(), self.t, len(keylist))
-        b_shares = pyseltongue.secret_int_to_points(self.b, self.t, len(keylist))
-        print(f"{self.id=}: {self.b=}, {self.t=}, {len(keylist)=}  {b_shares=}")
+        s_shares = secret_int_to_points(self.s.get_private_key(), self.t, len(keylist))
+        b_shares = secret_int_to_points(self.b, self.t, len(keylist))
         e = {}
         for (v, (cv, sv, sigv)), ss, bs in zip(keylist.items(), s_shares, b_shares):
             assert v in self.u1
@@ -98,15 +97,13 @@ class Client:
             k = self.c.gen_shared_key(cv)
             eu = encrypt_and_digest(self.id.to_bytes(16, 'big'), k)
             ev = encrypt_and_digest(v.to_bytes(16, 'big'), k)
-            ess = encrypt_and_digest(to_bytes(ss[1]), k)
-            ebs = encrypt_and_digest(to_bytes(bs[1]), k)
+            ess = encrypt_and_digest(ss[1], k)
+            ebs = encrypt_and_digest(bs[1], k)
             e[v] = (eu, ev, ess, ebs)
         return e
 
     def masked_input_collection(self, params, e):
         x, state = self.update(params)
-        print(f"before: {x=}")
-        print(f"before: {x.max()=}")
         self.e = e
         self.u2 = set(e.keys())
         assert len(self.u2) >= self.t
@@ -121,9 +118,6 @@ class Client:
                     puv = -puv
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
-        print(f"client {self.id}: {self.b=}")
-        print(f"client {self.id}: {pu=}")
-        print(f"client {self.id}: {sum(puvs)=}")
         return x + pu + sum(puvs), state
 
     def consistency_check(self, u3):
@@ -146,7 +140,6 @@ class Client:
                 svu.append((self.id + 1, int.from_bytes(decrypt_and_verify(ess, k), 'big')))
             else:
                 bvu.append((self.id + 1, int.from_bytes(decrypt_and_verify(ebs, k), 'big')))
-        print(f"{self.id=}: {bvu=}")
         return svu, bvu
 
 
@@ -164,3 +157,6 @@ def decrypt_and_verify(ct, k):
 
 def to_bytes(i):
     return i.to_bytes(ceil(i.bit_length() / 8), 'big')
+
+def secret_int_to_points(x, k, n):
+    return Shamir.split(k, n, x)

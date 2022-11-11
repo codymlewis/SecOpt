@@ -7,9 +7,9 @@ from typing import Any, NamedTuple, Tuple, Iterable, Optional
 import jax
 from optax import Params
 import numpy as np
-import pyseltongue
 from Crypto.PublicKey import ECC
 from Crypto.Signature import eddsa
+from Crypto.Protocol.SecretSharing import Shamir
 
 from .client import Client
 from . import DH
@@ -82,7 +82,7 @@ class Server:
         private_keys = []
         for v, suv in enumerate(suvs):
             if suv:
-                suv_combined = pyseltongue.points_to_secret_int(suv)
+                suv_combined = points_to_secret_int(suv)
                 private_keys.append((v, DH.DiffieHellman(private_key=suv_combined)))
         for (u, pku), (v, (_, pkv, _)) in itertools.product(private_keys, keylist.items()):
             if u != v:
@@ -92,16 +92,9 @@ class Server:
                     puvs[-1] = -puvs[-1]
         for buv in buvs:
             if buv:
-                buv_combined = pyseltongue.points_to_secret_int(buv)
-                print(f"{buv_combined=}")
+                buv_combined = points_to_secret_int(buv)
                 pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
-                print(f"{pus[-1]=}")
-        print(f"{sum(pus)=}")
-        print(f"{sum(puvs)=}")
-        print(f"preagg: {sum(yus)=}")
         x = sum(yus) - sum(pus) + sum(puvs)
-        print(f"{np.max(x)=}")
-        print(f"postagg: {x=}")
         params = self.unraveller(utils.ravel(params) - (x / len(yus)))
         return params, State(np.mean([s.value for s in states]))
 
@@ -147,3 +140,7 @@ def tree_add_scalar_mul(tree_a: PyTree, mul: float, tree_b: PyTree) -> PyTree:
 
 def transpose(input_list):
     return [list(i) for i in zip(*input_list)]
+
+
+def points_to_secret_int(points):
+    return int.from_bytes(Shamir.combine(points), 'big')

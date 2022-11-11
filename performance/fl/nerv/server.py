@@ -7,9 +7,9 @@ from typing import Any, NamedTuple, Tuple, Iterable, Optional
 import jax
 from optax import Params
 import numpy as np
-import pyseltongue
 from Crypto.PublicKey import ECC
 from Crypto.Signature import eddsa
+from Crypto.Protocol.SecretSharing import Shamir
 
 from .client import Client
 from . import DH
@@ -34,7 +34,7 @@ class Server:
         clients: Iterable[Client],
         maxiter: int = 5,
         seed: Optional[int] = None,
-        R: int = 2**16 - 1,
+        R: int = 2**8 - 1,
     ):
         """
         Parameters:
@@ -73,6 +73,9 @@ class Server:
         keys = self.advertise_keys()
         keylist = {u: (cu, su, sigu) for u, (cu, su, sigu) in keys.items()}
         euvs = self.share_keys(keylist)
+        z_shares = [c.gen_z_share() for c in self.clients]
+        for c in self.clients:
+            c.compute_z(z_shares)
         mmc, mvc, states = self.masked_input_collection(params, euvs)
         u3 = set(mmc.keys())
         ymus = list(mmc.values())
@@ -81,13 +84,13 @@ class Server:
         suvs, buvs = self.unmasking(v_sigs)
         pus, puvs = [], []
         private_keys = []
-        print(f"{suvs=}")
+        #print(f"{suvs=}")
         for v, suv in enumerate(suvs):
             if suv:
-                suv_combined = pyseltongue.points_to_secret_int(suv)
+                suv_combined = points_to_secret_int(suv)
                 private_keys.append((v, DH.DiffieHellman(private_key=suv_combined)))
         for (u, pku), (v, (_, pkv, _, _)) in itertools.product(private_keys, keylist.items()):
-            print(f"Here: {u}, {v}")
+            # print(f"Here: {u}, {v}")
             if u != v:
                 k = int.from_bytes(pku.gen_shared_key(pkv), 'big') % self.R
                 puvs.append(utils.gen_mask(k, self.params_len, self.R))
@@ -95,17 +98,30 @@ class Server:
                     puvs[-1] = -puvs[-1]
         for buv in buvs:
             if buv:
-                buv_combined = pyseltongue.points_to_secret_int(buv)
+                buv_combined = points_to_secret_int(buv)
                 pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
-        print(f"{sum(pus)=}, {sum(puvs)=}")
-        print(f"{sum(yvus) - sum(pus) + sum(puvs)=}")
-        print(f"{(sum(yvus) - sum(pus) + sum(puvs)).min()=}")
-        print(f"{(np.sqrt((sum(yvus) - sum(pus) + sum(puvs))) == 0).any()=}")
+        #print(f"{sum(pus)=}")
+        #print(f"{sum(puvs)=}")
+        #print(f"{sum(yvus) - sum(pus) + sum(puvs)=}")
+        #print(f"{(sum(yvus) - sum(pus) + sum(puvs)).min()=}")
+        #print(f"{(sum(yvus) - sum(pus) + sum(puvs)) / 1e18=}")
+        #print(f"{((sum(yvus) - sum(pus) + sum(puvs)) / 1e18).min()=}")
+        #print(f"{(sum(yvus) - sum(pus) + sum(puvs)) / 1e18=}")
+        #print(f"{(sum(ymus) - sum(pus) + sum(puvs)) / len(ymus)=}")
+        #print(f"{np.sqrt(((sum(yvus) - sum(pus) + sum(puvs)) / 1e18) / len(yvus))=}")
+        m = (sum(ymus) - sum(pus) + sum(puvs)) / len(ymus)
+        v_part = ((sum(yvus) - sum(pus) + sum(puvs)) / 1e18) / len(yvus)
         x = (
-            (sum(ymus) - sum(pus) + sum(puvs)) /
-            np.sqrt((sum(yvus) - sum(pus) + sum(puvs)))
+            ((sum(ymus) - sum(pus) + sum(puvs)) / len(ymus)) /
+            np.sqrt(((sum(yvus) - sum(pus) + sum(puvs)) / 1e18) / len(yvus))
         )
-        params = self.unraveller(utils.ravel(params) - x / len(u3))
+        #print(f"{sum(ymus)=}")
+        #print(f"{sum(yvus)=}")
+        # x = (sum(ymus) / len(ymus)) / np.sqrt(sum(yvus) / len(yvus))
+        #print(f"{x=}")
+        #print(f"{x.min()=}")
+        # x = sum(ymus) - sum(pus) + sum(puvs)
+        params = self.unraveller(utils.ravel(params) - x)
         return params, State(np.mean([s.value for s in states]))
 
     def advertise_keys(self):
@@ -150,3 +166,7 @@ def tree_add_scalar_mul(tree_a: PyTree, mul: float, tree_b: PyTree) -> PyTree:
 
 def transpose(l):
     return [list(i) for i in zip(*l)]
+
+
+def points_to_secret_int(points):
+    return int.from_bytes(Shamir.combine(points), 'big')

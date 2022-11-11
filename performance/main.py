@@ -160,6 +160,7 @@ if __name__ == "__main__":
     parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
     parser.add_argument('-r', '--rounds', type=int, default=500, help="Number of rounds to train for.")
+    parser.add_argument('-e', '--epochs', type=int, default=10, help="Number of epochs to train for in each round.")
     parser.add_argument('-a', '--aggregation', type=str, default="fedavg", help="Aggregation algorithm to use.")
     args = parser.parse_args()
 
@@ -178,7 +179,7 @@ if __name__ == "__main__":
             optax.sgd(0.01),
             loss(model),
             d,
-            epochs=10
+            epochs=args.epochs
         )
         for i, d in enumerate(data)
     ]

@@ -10,9 +10,8 @@ import jax.numpy as jnp
 import jaxopt
 import optax
 from optax import Params, Updates, GradientTransformation
-import random
-import pyseltongue
 from Crypto.Cipher import AES
+from Crypto.Protocol.SecretSharing import Shamir
 
 from . import DH
 from . import utils
@@ -30,7 +29,7 @@ class Client:
         data: Iterator,
         epochs: int = 1,
         t: int = 2,
-        R: int = 2**16 - 1,
+        R: int = 2**8 - 1,
         lr: float = 0.01,
         eps: float = 1e-8,
         b1: float = 0.9,
@@ -51,6 +50,7 @@ class Client:
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
         self.data = data
+        self.rng = data.rng
         self.t = t
         ravelled_params, unraveller = jax.flatten_util.ravel_pytree(params)
         self.params_len = len(ravelled_params)
@@ -85,9 +85,14 @@ class Client:
     def setup(self, signing_key, verification_keys):
         self.c = DH.DiffieHellman()
         self.s = DH.DiffieHellman()
-        self.z = DH.DiffieHellman()
         self.signing_key = signing_key
         self.verification_keys = verification_keys
+
+    def gen_z_share(self):
+        return (self.id, self.rng.integers(0, self.R).item())
+
+    def compute_z(self, z_shares):
+        self.z = points_to_secret_int(z_shares)
 
     def advertise_keys(self):
         cpk = self.c.gen_public_key()
@@ -99,23 +104,21 @@ class Client:
         self.keylist = keylist
         self.u1 = set(keylist.keys())
         assert len(self.u1) >= self.t
-        self.b = random.randint(0, self.R)
-        self.z = random.randint(0, self.R)
-        s_shares = pyseltongue.secret_int_to_points(self.s.get_private_key(), self.t, len(keylist))
-        z_shares = pyseltongue.secret_int_to_points(self.z, self.t, len(keylist))
-        b_shares = pyseltongue.secret_int_to_points(self.b, self.t, len(keylist))
+        self.b = self.rng.integers(0, self.R).item()
+        self.z = self.rng.integers(0, self.R).item()
+        s_shares = secret_int_to_points(self.s.get_private_key(), self.t, len(keylist))
+        b_shares = secret_int_to_points(self.b, self.t, len(keylist))
         e = {}
-        for (v, (cv, sv, sigv)), ss, zs, bs in zip(keylist.items(), s_shares, z_shares, b_shares):
+        for (v, (cv, sv, sigv)), ss, bs in zip(keylist.items(), s_shares, b_shares):
             assert v in self.u1
             ver_msg = to_bytes(cv) + to_bytes(sv)
             self.verification_keys[v].verify(ver_msg, sigv)
             k = self.c.gen_shared_key(cv)
             eu = encrypt_and_digest(self.id.to_bytes(16, 'big'), k)
             ev = encrypt_and_digest(v.to_bytes(16, 'big'), k)
-            ess = encrypt_and_digest(to_bytes(ss[1]), k)
-            ezs = encrypt_and_digest(to_bytes(zs[1]), k)
-            ebs = encrypt_and_digest(to_bytes(bs[1]), k)
-            e[v] = (eu, ev, ess, ezs, ebs)
+            ess = encrypt_and_digest(ss[1], k)
+            ebs = encrypt_and_digest(bs[1], k)
+            e[v] = (eu, ev, ess, ebs)
         return e
 
     def masked_input_collection(self, params, e):
@@ -135,9 +138,17 @@ class Client:
                     puv = -puv
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
-        qu = utils.gen_mask(self.z, self.params_len, self.R)
-        qu_squared = jnp.minimum(qu**2, 1e-15)
-        return mew * qu + pu + sum(puvs), new + pu + sum(puvs), state
+        qu = jnp.abs(utils.gen_mask(self.z, self.params_len, self.R))
+        qu_squared = jnp.maximum(qu**2, 1e-15)
+        #print(f"{self.id=}: {qu_squared=}")
+        #print(f"{self.id=}: {mew=}")
+        #print(f"{self.id=}: {new=}")
+        #print(f"{self.id=}: {new.min()=}")
+        #print(f"{self.id=}: {new + pu + sum(puvs)=}")
+        #print(f"{self.id=}: {mew / jnp.sqrt(new)=}")
+        #print(f"{self.id=}: {(mew / jnp.sqrt(new)).min()=}")
+        #return mew, new, state
+        return mew * qu + pu + sum(puvs), new * qu_squared * 1e18 + pu + sum(puvs), state
 
     def consistency_check(self, u3):
         self.u3 = u3
@@ -150,7 +161,7 @@ class Client:
         svu = []
         bvu = []
         for v, evu in self.e.items():
-            ev, eu, ess, ezs, ebs = evu[self.id]
+            ev, eu, ess, ebs = evu[self.id]
             k = self.c.gen_shared_key(self.keylist[v][0])
             uprime = int.from_bytes(decrypt_and_verify(eu, k), 'big')
             vprime = int.from_bytes(decrypt_and_verify(ev, k), 'big')
@@ -181,3 +192,10 @@ def decrypt_and_verify(ct, k):
 
 def to_bytes(i):
     return i.to_bytes(ceil(i.bit_length() / 8), 'big')
+
+def secret_int_to_points(x, k, n):
+    return Shamir.split(k, n, x)
+
+
+def points_to_secret_int(points):
+    return int.from_bytes(Shamir.combine(points), 'big')
