@@ -45,7 +45,6 @@ class Server:
         - num_adversaries: number of adversarial clients
         - seed: seed for the rng used for client selection
         """
-        self.params = params
         self.clients = clients
         self.maxiter = maxiter
         self.rng = np.random.default_rng(seed)
@@ -74,7 +73,7 @@ class Server:
         keys = self.advertise_keys()
         keylist = {u: (cu, su, sigu) for u, (cu, su, sigu) in keys.items()}
         euvs = self.share_keys(keylist)
-        mmc, mvc, states = self.masked_input_collection(euvs)
+        mmc, mvc, states = self.masked_input_collection(params, euvs)
         u3 = set(mmc.keys())
         ymus = list(mmc.values())
         yvus = list(mvc.values())
@@ -82,11 +81,13 @@ class Server:
         suvs, buvs = self.unmasking(v_sigs)
         pus, puvs = [], []
         private_keys = []
+        print(f"{suvs=}")
         for v, suv in enumerate(suvs):
             if suv:
                 suv_combined = pyseltongue.points_to_secret_int(suv)
                 private_keys.append((v, DH.DiffieHellman(private_key=suv_combined)))
         for (u, pku), (v, (_, pkv, _, _)) in itertools.product(private_keys, keylist.items()):
+            print(f"Here: {u}, {v}")
             if u != v:
                 k = int.from_bytes(pku.gen_shared_key(pkv), 'big') % self.R
                 puvs.append(utils.gen_mask(k, self.params_len, self.R))
@@ -96,13 +97,15 @@ class Server:
             if buv:
                 buv_combined = pyseltongue.points_to_secret_int(buv)
                 pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
+        print(f"{sum(pus)=}, {sum(puvs)=}")
+        print(f"{sum(yvus) - sum(pus) + sum(puvs)=}")
+        print(f"{(sum(yvus) - sum(pus) + sum(puvs)).min()=}")
+        print(f"{(np.sqrt((sum(yvus) - sum(pus) + sum(puvs))) == 0).any()=}")
         x = (
             (sum(ymus) - sum(pus) + sum(puvs)) /
-            np.sqrt((sum(yvus) - sum(pus) + sum(puvs)).astype(complex))
-        ).astype("float32")
-        params = self.unraveller(utils.ravel(self.params) - x / len(u3))
-        for c in self.clients:
-            c.receive_params(self.params)
+            np.sqrt((sum(yvus) - sum(pus) + sum(puvs)))
+        )
+        params = self.unraveller(utils.ravel(params) - x / len(u3))
         return params, State(np.mean([s.value for s in states]))
 
     def advertise_keys(self):
@@ -111,10 +114,10 @@ class Server:
     def share_keys(self, keylist):
         return {c.id: c.share_keys(keylist) for c in self.clients}
 
-    def masked_input_collection(self, euvs):
+    def masked_input_collection(self, params, euvs):
         mmc, mvc, states = {}, {}, []
         for c in self.clients:
-            mm, mv, state = c.masked_input_collection(euvs)
+            mm, mv, state = c.masked_input_collection(params, euvs)
             mmc.update({c.id: mm})
             mvc.update({c.id: mv})
             states.append(state)
@@ -132,6 +135,7 @@ class Server:
         buvs = transpose(bvus)
         suvs = transpose(svus)
         return suvs, buvs
+
 
 @jax.jit
 def tree_mean(*trees: PyTree) -> PyTree:

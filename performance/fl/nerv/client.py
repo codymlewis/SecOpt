@@ -18,9 +18,9 @@ from . import DH
 from . import utils
 
 
-
 class Client:
     """Standard federated learning client with optional model hardening."""
+
     def __init__(
         self,
         uid: int,
@@ -47,7 +47,6 @@ class Client:
         - epochs: Number of local epochs of training to perform in each round
         """
         self.id = uid
-        self.params = params
         self.solver = jaxopt.OptaxSolver(opt=optax.adam(0.01), fun=loss_fun, maxiter=epochs)
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
@@ -62,7 +61,7 @@ class Client:
         self.b1 = b1
         self.b2 = b2
 
-    def update(self) -> Tuple[Updates, NamedTuple]:
+    def update(self, params: Params) -> Tuple[Updates, NamedTuple]:
         """
         Perform local training for this round and return the resulting gradient and state
 
@@ -71,9 +70,10 @@ class Client:
         """
         for e in range(self.solver.maxiter):
             X, Y = next(self.data)
-            self.params, self.state = self.step(
-                params=self.params, state=self.state, X=X, Y=Y
+            params, self.state = self.step(
+                params=params, state=self.state, X=X, Y=Y
             )
+        del params
         m, v = self.state.internal_state[0].mu, self.state.internal_state[0].nu
         m = utils.ravel(m) * self.lr
         v = utils.ravel(v)
@@ -81,9 +81,6 @@ class Client:
         m_hat = bias_correction(m, self.b1, count)
         v_hat = bias_correction(v, self.b2, count)
         return m_hat, v_hat + self.eps**2, self.state
-
-    def receive_params(self, params):
-        self.params = params
 
     def setup(self, signing_key, verification_keys):
         self.c = DH.DiffieHellman()
@@ -121,8 +118,9 @@ class Client:
             e[v] = (eu, ev, ess, ezs, ebs)
         return e
 
-    def masked_input_collection(self, e):
-        mew, new, state = self.update()
+    def masked_input_collection(self, params, e):
+        mew, new, state = self.update(params)
+        del params
         self.e = e
         self.u2 = set(e.keys())
         assert len(self.u2) >= self.t
@@ -138,7 +136,8 @@ class Client:
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
         qu = utils.gen_mask(self.z, self.params_len, self.R)
-        return mew * qu + pu + sum(puvs), new * qu**2 + pu + sum(puvs), state
+        qu_squared = jnp.minimum(qu**2, 1e-15)
+        return mew * qu + pu + sum(puvs), new + pu + sum(puvs), state
 
     def consistency_check(self, u3):
         self.u3 = u3
@@ -171,6 +170,7 @@ def gradient(start_params: Params, end_params: Params) -> Array:
 @jax.jit
 def bias_correction(moment, decay, count):
     return moment / (1 - decay**count)
+
 
 def encrypt_and_digest(p, k):
     return AES.new(k, AES.MODE_EAX, nonce=b'secagg').encrypt_and_digest(p)

@@ -3,17 +3,14 @@ A standard federated learning client, with PGD hardening
 """
 
 from typing import Callable, Tuple, Iterator, NamedTuple
-from jax import Array
 import jax
-import jax.numpy as jnp
 import jaxopt
 from optax import Params, Updates, GradientTransformation
-from numpy.typing import NDArray
-
 
 
 class Client:
     """Standard federated learning client with optional model hardening."""
+
     def __init__(
         self,
         uid: int,
@@ -34,7 +31,6 @@ class Client:
         - epochs: Number of local epochs of training to perform in each round
         """
         self.id = uid
-        self.params = params
         self.solver = jaxopt.OptaxSolver(opt=opt, fun=loss_fun, maxiter=epochs)
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
@@ -47,10 +43,12 @@ class Client:
         Parameters:
         - global_params: Global parameters downloaded for this round of training
         """
-        self.params = global_params
+        params = global_params
         for e in range(self.solver.maxiter):
             X, Y = next(self.data)
-            self.params, self.state = self.step(
-                params=self.params, state=self.state, X=X, Y=Y
+            params, self.state = self.step(
+                params=params, state=self.state, X=X, Y=Y
             )
-        return jaxopt.tree_util.tree_sub(global_params, self.params), self.state
+        gradient = jaxopt.tree_util.tree_sub(global_params, params)
+        del params
+        return gradient, self.state

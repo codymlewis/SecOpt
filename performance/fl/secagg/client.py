@@ -17,9 +17,9 @@ from . import DH
 from . import utils
 
 
-
 class Client:
     """Standard federated learning client with optional model hardening."""
+
     def __init__(
         self,
         uid: int,
@@ -29,7 +29,7 @@ class Client:
         data: Iterator,
         epochs: int = 1,
         t: int = 2,
-        R: int = 2**16 - 1,
+        R: int = 2**8 - 1,
     ):
         """
         Initialize the client
@@ -42,7 +42,6 @@ class Client:
         - epochs: Number of local epochs of training to perform in each round
         """
         self.id = uid
-        self.params = params
         self.solver = jaxopt.OptaxSolver(opt=opt, fun=loss_fun, maxiter=epochs)
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
@@ -53,23 +52,23 @@ class Client:
         self.unraveller = jax.jit(unraveller)
         self.R = R
 
-    def update(self) -> Tuple[Updates, NamedTuple]:
+    def update(self, params: Params) -> Tuple[Updates, NamedTuple]:
         """
         Perform local training for this round and return the resulting gradient and state
 
         Parameters:
         - global_params: Global parameters downloaded for this round of training
         """
-        start_params = self.params
+        start_params = params
         for e in range(self.solver.maxiter):
             X, Y = next(self.data)
-            self.params, self.state = self.step(
-                params=self.params, state=self.state, X=X, Y=Y
+            params, self.state = self.step(
+                params=params, state=self.state, X=X, Y=Y
             )
-        return gradient(start_params, self.params), self.state
-
-    def receive_params(self, params):
-        self.params = params
+        grads = gradient(start_params, params)
+        del params
+        del start_params
+        return grads, self.state
 
     def setup(self, signing_key, verification_keys):
         self.c = DH.DiffieHellman()
@@ -90,6 +89,7 @@ class Client:
         self.b = random.randint(0, self.R)
         s_shares = pyseltongue.secret_int_to_points(self.s.get_private_key(), self.t, len(keylist))
         b_shares = pyseltongue.secret_int_to_points(self.b, self.t, len(keylist))
+        print(f"{self.id=}: {self.b=}, {self.t=}, {len(keylist)=}  {b_shares=}")
         e = {}
         for (v, (cv, sv, sigv)), ss, bs in zip(keylist.items(), s_shares, b_shares):
             assert v in self.u1
@@ -103,8 +103,10 @@ class Client:
             e[v] = (eu, ev, ess, ebs)
         return e
 
-    def masked_input_collection(self, e):
-        x, state = self.update()
+    def masked_input_collection(self, params, e):
+        x, state = self.update(params)
+        print(f"before: {x=}")
+        print(f"before: {x.max()=}")
         self.e = e
         self.u2 = set(e.keys())
         assert len(self.u2) >= self.t
@@ -119,6 +121,9 @@ class Client:
                     puv = -puv
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
+        print(f"client {self.id}: {self.b=}")
+        print(f"client {self.id}: {pu=}")
+        print(f"client {self.id}: {sum(puvs)=}")
         return x + pu + sum(puvs), state
 
     def consistency_check(self, u3):
@@ -141,6 +146,7 @@ class Client:
                 svu.append((self.id + 1, int.from_bytes(decrypt_and_verify(ess, k), 'big')))
             else:
                 bvu.append((self.id + 1, int.from_bytes(decrypt_and_verify(ebs, k), 'big')))
+        print(f"{self.id=}: {bvu=}")
         return svu, bvu
 
 

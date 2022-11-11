@@ -33,7 +33,7 @@ class Server:
         clients: Iterable[Client],
         maxiter: int = 5,
         seed: Optional[int] = None,
-        R: int = 2**16 - 1,
+        R: int = 2**8 - 1,
     ):
         """
         Parameters:
@@ -73,7 +73,7 @@ class Server:
         keys = self.advertise_keys()
         keylist = {u: (cu, su, sigu) for u, (cu, su, sigu) in keys.items()}
         euvs = self.share_keys(keylist)
-        mic, states = self.masked_input_collection(euvs)
+        mic, states = self.masked_input_collection(params, euvs)
         u3 = set(mic.keys())
         yus = list(mic.values())
         v_sigs = self.consistency_check(u3)
@@ -93,11 +93,16 @@ class Server:
         for buv in buvs:
             if buv:
                 buv_combined = pyseltongue.points_to_secret_int(buv)
+                print(f"{buv_combined=}")
                 pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
+                print(f"{pus[-1]=}")
+        print(f"{sum(pus)=}")
+        print(f"{sum(puvs)=}")
+        print(f"preagg: {sum(yus)=}")
         x = sum(yus) - sum(pus) + sum(puvs)
-        params = self.unraveller(utils.ravel(self.params) - x / len(yus))
-        for c in self.clients:
-            c.receive_params(self.params)
+        print(f"{np.max(x)=}")
+        print(f"postagg: {x=}")
+        params = self.unraveller(utils.ravel(params) - (x / len(yus)))
         return params, State(np.mean([s.value for s in states]))
 
     def advertise_keys(self):
@@ -106,10 +111,10 @@ class Server:
     def share_keys(self, keylist):
         return {c.id: c.share_keys(keylist) for c in self.clients}
 
-    def masked_input_collection(self, euvs):
+    def masked_input_collection(self, params, euvs):
         mis, states = {}, []
         for c in self.clients:
-            mi, state = c.masked_input_collection(euvs)
+            mi, state = c.masked_input_collection(params, euvs)
             mis.update({c.id: mi})
             states.append(state)
         return mis, states
@@ -127,6 +132,7 @@ class Server:
         suvs = transpose(svus)
         return suvs, buvs
 
+
 @jax.jit
 def tree_mean(*trees: PyTree) -> PyTree:
     """Average together a collection of pytrees"""
@@ -138,5 +144,6 @@ def tree_add_scalar_mul(tree_a: PyTree, mul: float, tree_b: PyTree) -> PyTree:
     """Add a scaler multiple of tree_b to tree_a"""
     return jax.tree_util.tree_map(lambda a, b: a + mul * b, tree_a, tree_b)
 
-def transpose(l):
-    return [list(i) for i in zip(*l)]
+
+def transpose(input_list):
+    return [list(i) for i in zip(*input_list)]

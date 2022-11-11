@@ -21,6 +21,16 @@ import models
 PyTree = Any
 
 
+class TestModel(nn.Module):
+    @nn.compact
+    def __call__(self, x: Array, representation: bool = False) -> Array:
+        x = einops.rearrange(x, "b w h c -> b (w h c)")
+        if representation:
+            return x
+        x = nn.Dense(10, name="classifier")(x)
+        return nn.softmax(x)
+
+
 def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
     """
     A cross-entropy loss function
@@ -139,6 +149,7 @@ def load_agg_module(name: str) -> Tuple[Any, Any]:
         case "nerv": return fl.nerv
         case _: raise NotImplementedError(f"Aggregation method {name} has not been implmented.")
 
+
 if __name__ == "__main__":
     parser = ArgumentParser(
         description="Experiments looking at the performance of different aggregation algorithms."
@@ -148,7 +159,7 @@ if __name__ == "__main__":
     parser.add_argument('-m', '--model', type=str, default="lenet", help="Model to train.")
     parser.add_argument('-n', '--num-clients', type=int, default=10, help="Number of clients to train with.")
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
-    parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
+    parser.add_argument('-r', '--rounds', type=int, default=500, help="Number of rounds to train for.")
     parser.add_argument('-a', '--aggregation', type=str, default="fedavg", help="Aggregation algorithm to use.")
     args = parser.parse_args()
 
@@ -157,8 +168,8 @@ if __name__ == "__main__":
     dataset = load_dataset(args.dataset, seed)
     data = dataset.fed_split([args.batch_size for _ in range(args.num_clients)], fl.data.lda)
     agg = load_agg_module(args.aggregation)
-    # model = TestModel()
-    model = models.load_model(args.model)
+    model = TestModel()
+    # model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(seed), dataset.input_init)
     clients = [
         agg.client.Client(
@@ -166,7 +177,8 @@ if __name__ == "__main__":
             params,
             optax.sgd(0.01),
             loss(model),
-            d
+            d,
+            epochs=10
         )
         for i, d in enumerate(data)
     ]
