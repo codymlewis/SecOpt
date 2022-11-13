@@ -50,22 +50,18 @@ class CNN1(nn.Module):
 class CNN2(nn.Module):
     @nn.compact
     def __call__(self, x: Array, representation: bool = False) -> Array:
-        x = nn.Conv(32, (3, 3))(x)
+        x = nn.Conv(32, (5, 5))(x)
         x = nn.LayerNorm()(x)
         x = nn.relu(x)
-        x = nn.Conv(32, (3, 3))(x)
-        x = nn.LayerNorm()(x)
-        x = nn.relu(x)
-        x = nn.max_pool(x, (3, 3), strides=(2, 2), padding='SAME')
-        x = nn.Conv(64, (3, 3))(x)
-        x = nn.LayerNorm()(x)
-        x = nn.relu(x)
-        x = nn.Conv(64, (3, 3))(x)
+        x = nn.Conv(64, (5, 5))(x)
         x = nn.LayerNorm()(x)
         x = nn.relu(x)
         x = nn.max_pool(x, (3, 3), strides=(2, 2), padding='SAME')
         x = einops.rearrange(x, "b w h c -> b (w h c)")
-        x = nn.Dense(100)(x)
+        x = nn.Dense(120)(x)
+        x = nn.LayerNorm()(x)
+        x = nn.relu(x)
+        x = nn.Dense(84)(x)
         x = nn.relu(x)
         if representation:
             return x
