@@ -99,8 +99,8 @@ class Server:
                 buv_combined = points_to_secret_int(buv)
                 pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
         x = (
-            ((sum(ymus) - sum(pus) + sum(puvs)) / len(ymus)) /
-            np.sqrt(((sum(yvus) - sum(pus) + sum(puvs)) / 1e18) / len(yvus))
+            ((sum(ymus) - sum(pus) + sum(puvs)) / (1e18 * len(ymus))) /
+            np.sqrt((sum(yvus) - sum(pus) + sum(puvs)) / (1e18 * len(yvus)))
         )
         params = self.unraveller(utils.ravel(params) - x)
         return params, State(np.mean([s.value for s in states]))

@@ -21,16 +21,6 @@ import models
 PyTree = Any
 
 
-class TestModel(nn.Module):
-    @nn.compact
-    def __call__(self, x: Array, representation: bool = False) -> Array:
-        x = einops.rearrange(x, "b w h c -> b (w h c)")
-        if representation:
-            return x
-        x = nn.Dense(10, name="classifier")(x)
-        return nn.softmax(x)
-
-
 def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
     """
     A cross-entropy loss function
@@ -169,7 +159,6 @@ if __name__ == "__main__":
     dataset = load_dataset(args.dataset, seed)
     data = dataset.fed_split([args.batch_size for _ in range(args.num_clients)], fl.data.lda)
     agg = load_agg_module(args.aggregation)
-    # model = TestModel()
     model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(seed), dataset.input_init)
     clients = [

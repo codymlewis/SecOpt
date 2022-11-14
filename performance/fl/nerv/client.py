@@ -139,8 +139,8 @@ class Client:
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
         qu = jnp.abs(utils.gen_mask(self.z, self.params_len, self.R))
-        qu_squared = jnp.maximum(qu, 1e-15)
-        return mew * qu + pu + sum(puvs), new * qu_squared * 1e18 + pu + sum(puvs), state
+        qu_squared = jnp.maximum(qu**2, 1e-15)
+        return mew * qu * 1e18 + pu + sum(puvs), new * qu_squared * 1e18 + pu + sum(puvs), state
 
     def consistency_check(self, u3):
         self.u3 = u3
@@ -182,8 +182,10 @@ def encrypt_and_digest(p, k):
 def decrypt_and_verify(ct, k):
     return AES.new(k, AES.MODE_EAX, nonce=b'secagg').decrypt_and_verify(*ct)
 
+
 def to_bytes(i):
     return i.to_bytes(ceil(i.bit_length() / 8), 'big')
+
 
 def secret_int_to_points(x, k, n):
     return Shamir.split(k, n, x)
