@@ -165,7 +165,7 @@ if __name__ == "__main__":
         agg.client.Client(
             i,
             params,
-            optax.sgd(0.01),
+            optax.sgd(0.1),
             loss(model),
             d,
             epochs=args.epochs
