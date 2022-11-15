@@ -15,6 +15,7 @@ from tqdm import trange
 import jaxopt
 import skimage
 import pandas as pd
+import matplotlib.pyplot as plt
 
 import fl
 import models
@@ -170,6 +171,26 @@ def evaluate_inversion(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLi
     return np.mean(psnrs), np.mean(ssims)
 
 
+def inversion_images(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike, client_id: int):
+    """Create images showing the effectiveness of the inversion."""
+    X = X[Y.argsort()]
+    Y.sort()
+    non_rep_labels = np.arange(np.max(Y) + 1)[np.bincount(Y) == 1]
+    zidx = np.where(np.isin(labels, Y) & np.isin(labels, non_rep_labels))[0]
+    xidx = np.where(np.isin(Y, labels) & np.isin(Y, non_rep_labels))[0]
+    if not len(zidx) or not len(xidx):
+        return
+    for zi, xi in zip(zidx, xidx):
+        plt.imshow(Z[zi], cmap='gray')
+        plt.savefig(f'client_{client_id}_Z{zi}_label{labels[zi]}', dpi=320)
+        plt.clf()
+        plt.imshow(X[xi], cmap='gray')
+        plt.savefig(f'client_{client_id}_ground_truth{xi}_Y{Y[xi]}', dpi=320)
+        plt.clf()
+
+
+
+
 if __name__ == "__main__":
     parser = ArgumentParser(description="Experiments looking at adversarial training against backdoor attacks.")
     parser.add_argument('-b', '--batch-size', type=int, default=8, help="Size of batches for training.")
@@ -179,6 +200,7 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
     parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
     parser.add_argument('-o', '--opt', type=str, default="sgd", help="Optimizer to use.")
+    parser.add_argument('--gen-images', action="store_true", help="Generate images from the inversion.")
     args = parser.parse_args()
 
     seed = round(args.seed * np.pi) + 500
@@ -227,19 +249,23 @@ if __name__ == "__main__":
         )
         Z, _ = solver.run(Z)
         Z = np.array(Z)
-        psnr, ssim = evaluate_inversion(all_X[i], all_Y[i], Z, labels)
-        if psnr is not None and ssim is not None:
-            pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}")
-            psnrs.append(psnr)
-            ssims.append(ssim)
+        if args.gen_images:
+            inversion_images(all_X[i], all_Y[i], Z, labels, i)
+        else:
+            psnr, ssim = evaluate_inversion(all_X[i], all_Y[i], Z, labels)
+            if psnr is not None and ssim is not None:
+                pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}")
+                psnrs.append(psnr)
+                ssims.append(ssim)
 
-    experiment_results = vars(args).copy()
-    experiment_results['Final accuracy'] = final_acc.item()
-    experiment_results['PSNR'] = np.mean(psnrs)
-    experiment_results['SSIM'] = np.mean(ssims)
-    df_results = pd.DataFrame(data=experiment_results, index=[0])
-    if os.path.exists('results.csv'):
-        old_results = pd.read_csv('results.csv')
-        df_results = pd.concat((old_results, df_results))
-    df_results.to_csv('results.csv', index=False)
+    if not args.gen_images:
+        experiment_results = vars(args).copy()
+        experiment_results['Final accuracy'] = final_acc.item()
+        experiment_results['PSNR'] = np.mean(psnrs)
+        experiment_results['SSIM'] = np.mean(ssims)
+        df_results = pd.DataFrame(data=experiment_results, index=[0])
+        if os.path.exists('results.csv'):
+            old_results = pd.read_csv('results.csv')
+            df_results = pd.concat((old_results, df_results))
+        df_results.to_csv('results.csv', index=False)
     print("Done.")
