@@ -11,7 +11,6 @@ from optax import Params, Updates, GradientTransformation
 from numpy.typing import NDArray
 
 
-
 class Client:
     """Standard federated learning client with optional model hardening."""
     def __init__(
@@ -49,7 +48,7 @@ class Client:
         self.params = global_params
         for e in range(self.solver.maxiter):
             X, Y = next(self.data)
-            # X = self.hardening(self.params, X, Y)
+            X = self.hardening(self.params, X, Y)
             self.params, self.state = self.step(
                 params=self.params, state=self.state, X=X, Y=Y
             )

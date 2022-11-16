@@ -5,10 +5,21 @@ from jax import Array
 
 def load_model(name: str) -> nn.Module:
     match name:
+        case "softmax": return Softmax()
         case "lenet": return LeNet()
         case "cnn1": return CNN1()
         case "cnn2": return CNN2()
         case _: raise NotImplementedError(f"Model {name} has not been implemented.")
+
+
+class Softmax(nn.Module):
+    @nn.compact
+    def __call__(self, x: Array, representation: bool = False) -> Array:
+        x = einops.rearrange(x, "b w h c -> b (w h c)")
+        if representation:
+            return x
+        x = nn.Dense(10, name="classifier")(x)
+        return nn.softmax(x)
 
 
 class LeNet(nn.Module):

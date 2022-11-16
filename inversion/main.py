@@ -147,7 +147,7 @@ def total_variation(V: Array) -> float:
 
 
 def reploss(
-    model: nn.Module, params: PyTree, true_reps: ArrayLike, lamb_tv: float = 1e-3
+    model: nn.Module, params: PyTree, true_reps: ArrayLike, lamb_tv: float = 5e-4
 ) -> Callable[[Array], float]:
     """Loss function for the representation gradient inversion attack."""
     def _apply(Z: Array) -> float:
@@ -182,13 +182,13 @@ def inversion_images(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike
         return
     for zi, xi in zip(zidx, xidx):
         plt.imshow(Z[zi], cmap='gray')
+        plt.axis('off')
         plt.savefig(f'client_{client_id}_Z{zi}_label{labels[zi]}', dpi=320)
         plt.clf()
         plt.imshow(X[xi], cmap='gray')
+        plt.axis('off')
         plt.savefig(f'client_{client_id}_ground_truth{xi}_Y{Y[xi]}', dpi=320)
         plt.clf()
-
-
 
 
 if __name__ == "__main__":
@@ -218,7 +218,7 @@ if __name__ == "__main__":
             params,
             optax.sgd(0.1) if args.opt.lower() == "sgd" else optax.adam(0.01),
             loss(model),
-            d
+            d,
         )
         for d in data
     ]
@@ -245,7 +245,7 @@ if __name__ == "__main__":
             opt=optax.adam(0.01),
             pre_update=lambda z, s: (jnp.clip(z, 0, 1), s),
             fun=reploss(model, params, true_reps),
-            maxiter=500
+            maxiter=1000
         )
         Z, _ = solver.run(Z)
         Z = np.array(Z)
