@@ -99,8 +99,8 @@ class Server:
                 buv_combined = points_to_secret_int(buv)
                 pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
         x = (
-            ((sum(ymus) - sum(pus) + sum(puvs)) / (1e18 * len(ymus))) /
-            np.sqrt((sum(yvus) - sum(pus) + sum(puvs)) / (1e18 * len(yvus)))
+            ((decode(sum(ymus) - encode(sum(pus)) + encode(sum(puvs))) / len(ymus))) /
+            np.sqrt(np.maximum(decode(sum(yvus) - encode(sum(pus)) + encode(sum(puvs))) / len(yvus), 1e-8))
         )
         params = self.unraveller(utils.ravel(params) - x)
         return params, State(np.mean([s.value for s in states]))
@@ -151,3 +151,11 @@ def transpose(l):
 
 def points_to_secret_int(points):
     return int.from_bytes(Shamir.combine(points), 'big')
+
+
+def encode(x):
+    return x * 1e10
+
+
+def decode(x):
+    return x / 1e10

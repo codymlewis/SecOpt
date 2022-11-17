@@ -118,7 +118,7 @@ class Client:
                     puv = -puv
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
-        return x + pu + sum(puvs), state
+        return encode(x) + encode(pu) + encode(sum(puvs)), state
 
     def consistency_check(self, u3):
         self.u3 = u3
@@ -160,3 +160,6 @@ def to_bytes(i):
 
 def secret_int_to_points(x, k, n):
     return Shamir.split(k, n, x)
+
+def encode(x):
+    return x * 1e10

@@ -31,7 +31,7 @@ class Client:
         t: int = 2,
         R: int = 2**8 - 1,
         lr: float = 0.01,
-        eps: float = 1e-8,
+        eps: float = 1e-4,
         b1: float = 0.9,
         b2: float = 0.999,
     ):
@@ -139,8 +139,10 @@ class Client:
             puvs.append(puv)
         pu = utils.gen_mask(self.b, self.params_len, self.R)
         qu = jnp.abs(utils.gen_mask(self.z, self.params_len, self.R))
-        qu_squared = jnp.maximum(qu**2, 1e-15)
-        return mew * qu * 1e18 + pu + sum(puvs), new * qu_squared * 1e18 + pu + sum(puvs), state
+        qu_squared = jnp.maximum(qu**2, 1e-8)
+        encoded_mew = encode(mew) * qu + encode(pu) + encode(sum(puvs))
+        encoded_new = encode(new) * qu_squared + encode(pu) + encode(sum(puvs))
+        return encoded_mew, encoded_new, state
 
     def consistency_check(self, u3):
         self.u3 = u3
@@ -193,3 +195,7 @@ def secret_int_to_points(x, k, n):
 
 def points_to_secret_int(points):
     return int.from_bytes(Shamir.combine(points), 'big')
+
+
+def encode(x):
+    return x * 1e10
