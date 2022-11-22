@@ -267,6 +267,7 @@ if __name__ == "__main__":
 
     if not args.gen_images:
         experiment_results = vars(args).copy()
+        del experiment_results['gen_images']
         experiment_results['Final accuracy'] = final_acc.item()
         experiment_results['PSNR'] = np.mean(psnrs)
         experiment_results['SSIM'] = np.mean(ssims)
