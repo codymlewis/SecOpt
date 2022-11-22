@@ -4,6 +4,7 @@ A server for federated learning.
 
 from typing import Any, NamedTuple, Tuple, Iterable, Optional
 import jax
+import jax.numpy as jnp
 from optax import Params
 import numpy as np
 
@@ -86,10 +87,41 @@ class Server:
         return all_grads, all_X, all_Y
 
 
+class AdamServer(Server):
+    def update(self, params: Params, state: State) -> Tuple[Params, State]:
+        """
+        Perform a round of training
+        Parameters:
+        - params: Model parameters
+        - state: Server state
+        """
+        all_ms, all_ns, all_states = [], [], []
+        if self.C < 1:
+            idx = self.rng.chice(self.K - self.num_adversaries, size=int(self.C * self.K - self.num_adversaries))
+            idx = np.concatenate((idx, range(self.K - self.num_adversaries, self.K)))
+        else:
+            idx = range(self.K)
+        for i in idx:
+            m, n, state = self.clients[i].update(params)
+            all_ms.append(m)
+            all_ns.append(n)
+            all_states.append(state)
+        meaned_ms = tree_mean(*all_ms)
+        meaned_ns = tree_mean(*all_ns)
+        params = tree_add_scalar_mul(params, -1, tree_adam(meaned_ms, meaned_ns))
+        return params, State(np.mean([s.value for s in all_states]))
+
+
 @jax.jit
 def tree_mean(*trees: PyTree) -> PyTree:
     """Average together a collection of pytrees"""
     return jax.tree_util.tree_map(lambda *ts: sum(ts) / len(trees), *trees)
+
+
+@jax.jit
+def tree_adam(tree_a: PyTree, tree_b: PyTree) -> PyTree:
+    """Average together a collection of pytrees"""
+    return jax.tree_util.tree_map(lambda a, b: a / jnp.sqrt(b), tree_a, tree_b)
 
 
 @jax.jit

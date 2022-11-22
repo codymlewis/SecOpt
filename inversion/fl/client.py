@@ -2,13 +2,15 @@
 A standard federated learning client, with PGD hardening
 """
 
-from typing import Callable, Tuple, Iterator, NamedTuple
+from typing import Any, Callable, Tuple, Iterator, NamedTuple
 from jax import Array
 import jax
 import jax.numpy as jnp
 import jaxopt
 from optax import Params, Updates, GradientTransformation
 from numpy.typing import NDArray
+
+PyTree = Any
 
 
 class Client:
@@ -66,6 +68,24 @@ class Client:
         return jaxopt.tree_util.tree_sub(global_params, self.params), X, Y
 
 
+class AdamClient(Client):
+    def __init__(
+        self,
+        *args,
+        lr: float = 0.01,
+        eps: float = 1e-8,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.lr = lr
+        self.eps = eps
+
+    def update(self, global_params: Params) -> Tuple[Updates, Updates, NamedTuple]:
+        _, state = super().update(global_params)
+        m, n = state.internal_state[0].mu, state.internal_state[0].nu
+        return tree_mul_scalar(m, self.lr), tree_add_scalar(n, self.eps), state
+
+
 def pgd(
     loss: Callable[[Params, Array, Array], float],
     epsilon: float=0.3,
@@ -93,3 +113,13 @@ def pgd(
         return X
 
     return update
+
+
+@jax.jit
+def tree_mul_scalar(tree: PyTree, scalar: float) -> PyTree:
+    return jax.tree_util.tree_map(lambda x: x * scalar, tree)
+
+
+@jax.jit
+def tree_add_scalar(tree: PyTree, scalar: float) -> PyTree:
+    return jax.tree_util.tree_map(lambda x: x + scalar, tree)

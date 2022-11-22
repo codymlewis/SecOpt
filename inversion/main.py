@@ -213,8 +213,15 @@ if __name__ == "__main__":
     )
     model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(seed), dataset.input_init)
+    if args.opt.lower() == "sgd":
+        Client = fl.client.Client
+        Server = fl.server.Server
+    else:
+        Client = fl.client.AdamClient
+        Server = fl.server.AdamServer
+
     clients = [
-        fl.client.Client(
+        Client(
             params,
             optax.sgd(0.1) if args.opt.lower() == "sgd" else optax.adam(0.01),
             loss(model),
@@ -222,7 +229,7 @@ if __name__ == "__main__":
         )
         for d in data
     ]
-    server = fl.server.Server(params, clients, maxiter=args.rounds, seed=seed)
+    server = Server(params, clients, maxiter=args.rounds, seed=seed)
     state = server.init_state(params)
     for _ in (pbar := trange(server.maxiter)):
         params, state = server.update(params, state)
