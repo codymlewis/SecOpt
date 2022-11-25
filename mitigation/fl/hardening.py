@@ -83,7 +83,7 @@ def flip(
 
         pair_dists = distances + distances.T
         if pair_dists.min() == np.inf:
-            if ((distances * ~np.eye(data.classes).astype(bool))[unique_Y] == np.inf).any():
+            if (np.where(~np.eye(data.classes).astype(bool), distances, 0)[unique_Y] == np.inf).any():
                 a = rng.choice(unique_Y)
             else:
                 a = np.where(distances == distances.min())[0][0]
