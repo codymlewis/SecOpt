@@ -223,7 +223,7 @@ if __name__ == "__main__":
     clients = [
         Client(
             params,
-            optax.sgd(0.1) if args.opt.lower() == "sgd" else optax.adam(0.01),
+            optax.sgd(0.1) if args.opt.lower() == "sgd" else optax.adam(0.001),
             loss(model),
             d,
         )

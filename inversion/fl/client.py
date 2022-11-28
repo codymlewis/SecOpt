@@ -34,11 +34,12 @@ class Client:
         - epochs: Number of local epochs of training to perform in each round
         """
         self.params = params
+        self.loss_fun = loss_fun
         self.solver = jaxopt.OptaxSolver(opt=opt, fun=loss_fun, maxiter=epochs)
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
         self.data = data
-        self.hardening = pgd(loss_fun)
+        self.hardening = pgd(loss_fun, lr=0.001)
 
     def update(self, global_params: Params) -> Tuple[Updates, NamedTuple]:
         """
@@ -72,11 +73,12 @@ class AdamClient(Client):
     def __init__(
         self,
         *args,
-        lr: float = 0.01,
+        lr: float = 0.001,
         eps: float = 1e-8,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self.hardening = pgd(self.loss_fun, lr=lr / 100)
         self.lr = lr
         self.eps = eps
 
@@ -88,9 +90,9 @@ class AdamClient(Client):
 
 def pgd(
     loss: Callable[[Params, Array, Array], float],
-    epsilon: float=0.3,
-    lr: float=0.001,
-    steps: int=50
+    epsilon: float = 0.3,
+    lr: float = 0.001,
+    steps: int = 1
 ) -> Callable[[Params, Array, Array], Array]:
     """Projected gradient descent, proposed in https://arxiv.org/abs/1706.06083"""
 
