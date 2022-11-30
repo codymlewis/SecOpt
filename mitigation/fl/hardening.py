@@ -42,7 +42,7 @@ def pgd(
     loss: Callable[[Params, Array, Array], Tuple[Array, Array]],
     epsilon: float=0.3,
     lr: float=0.001,
-    steps: int=50
+    steps: int=1
 ) -> Hardening:
     """Projected gradient descent, proposed in https://arxiv.org/abs/1706.06083"""
 
@@ -70,7 +70,7 @@ def pgd(
 def flip(
     model,
     data,
-    steps: int=50
+    steps: int=1
 ) -> Hardening:
     distances = np.full((data.classes, data.classes), np.inf)
     rng = data.rng
