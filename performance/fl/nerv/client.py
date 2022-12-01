@@ -15,6 +15,7 @@ from Crypto.Protocol.SecretSharing import Shamir
 
 from . import DH
 from . import utils
+from fl import hardening
 
 
 class Client:
@@ -55,6 +56,7 @@ class Client:
         ravelled_params, unraveller = jax.flatten_util.ravel_pytree(params)
         self.params_len = len(ravelled_params)
         self.unraveller = jax.jit(unraveller)
+        self.hardening = hardening.pgd(loss_fun)
         self.R = R
         self.lr = lr
         self.eps = eps
@@ -70,6 +72,7 @@ class Client:
         """
         for e in range(self.solver.maxiter):
             X, Y = next(self.data)
+            X = self.hardening(params, X, Y)
             params, self.state = self.step(
                 params=params, state=self.state, X=X, Y=Y
             )

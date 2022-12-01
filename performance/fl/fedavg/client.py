@@ -7,6 +7,8 @@ import jax
 import jaxopt
 from optax import Params, Updates, GradientTransformation
 
+from fl import hardening
+
 
 class Client:
     """Standard federated learning client with optional model hardening."""
@@ -34,6 +36,7 @@ class Client:
         self.solver = jaxopt.OptaxSolver(opt=opt, fun=loss_fun, maxiter=epochs)
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
+        self.hardening = hardening.pgd(loss_fun)
         self.data = data
 
     def update(self, global_params: Params) -> Tuple[Updates, NamedTuple]:
@@ -46,6 +49,7 @@ class Client:
         params = global_params
         for e in range(self.solver.maxiter):
             X, Y = next(self.data)
+            X = self.hardening(params, X, Y)
             params, self.state = self.step(
                 params=params, state=self.state, X=X, Y=Y
             )
