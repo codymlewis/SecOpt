@@ -31,7 +31,7 @@ class Client:
         epochs: int = 1,
         t: int = 2,
         R: int = 2**8 - 1,
-        lr: float = 0.01,
+        lr: float = 0.001,
         eps: float = 1e-4,
         b1: float = 0.9,
         b2: float = 0.999,
@@ -47,7 +47,7 @@ class Client:
         - epochs: Number of local epochs of training to perform in each round
         """
         self.id = uid
-        self.solver = jaxopt.OptaxSolver(opt=optax.adam(0.01), fun=loss_fun, maxiter=epochs)
+        self.solver = jaxopt.OptaxSolver(opt=optax.adam(0.001), fun=loss_fun, maxiter=epochs)
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
         self.data = data
@@ -56,7 +56,7 @@ class Client:
         ravelled_params, unraveller = jax.flatten_util.ravel_pytree(params)
         self.params_len = len(ravelled_params)
         self.unraveller = jax.jit(unraveller)
-        self.hardening = hardening.pgd(loss_fun)
+        self.hardening = hardening.pgd(loss_fun, lr=lr / 100)
         self.R = R
         self.lr = lr
         self.eps = eps

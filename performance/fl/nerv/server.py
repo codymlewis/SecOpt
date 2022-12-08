@@ -70,38 +70,46 @@ class Server:
         return State(np.inf)
 
     def update(self, params: Params, state: State) -> Tuple[Params, State]:
-        keys = self.advertise_keys()
-        keylist = {u: (cu, su, sigu) for u, (cu, su, sigu) in keys.items()}
-        euvs = self.share_keys(keylist)
-        z_shares = [c.gen_z_share() for c in self.clients]
+        #keys = self.advertise_keys()
+        #keylist = {u: (cu, su, sigu) for u, (cu, su, sigu) in keys.items()}
+        #euvs = self.share_keys(keylist)
+        #z_shares = [c.gen_z_share() for c in self.clients]
+        #for c in self.clients:
+        #    c.compute_z(z_shares)
+        #mmc, mvc, states = self.masked_input_collection(params, euvs)
+        #u3 = set(mmc.keys())
+        #ymus = list(mmc.values())
+        #yvus = list(mvc.values())
+        #v_sigs = self.consistency_check(u3)
+        #suvs, buvs = self.unmasking(v_sigs)
+        #pus, puvs = [], []
+        #private_keys = []
+        #for v, suv in enumerate(suvs):
+        #    if suv:
+        #        suv_combined = points_to_secret_int(suv)
+        #        private_keys.append((v, DH.DiffieHellman(private_key=suv_combined)))
+        #for (u, pku), (v, (_, pkv, _, _)) in itertools.product(private_keys, keylist.items()):
+        #    if u != v:
+        #        k = int.from_bytes(pku.gen_shared_key(pkv), 'big') % self.R
+        #        puvs.append(utils.gen_mask(k, self.params_len, self.R))
+        #        if u < v:
+        #            puvs[-1] = -puvs[-1]
+        #for buv in buvs:
+        #    if buv:
+        #        buv_combined = points_to_secret_int(buv)
+        #        pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
+        #x = (
+        #    ((decode(sum(ymus) - encode(sum(pus)) + encode(sum(puvs))) / len(ymus))) /
+        #    np.sqrt(np.maximum(decode(sum(yvus) - encode(sum(pus)) + encode(sum(puvs))) / len(yvus), 1e-8))
+        #)
+        #params = self.unraveller(utils.ravel(params) - x)
+        ms, vs, states = [], [], []
         for c in self.clients:
-            c.compute_z(z_shares)
-        mmc, mvc, states = self.masked_input_collection(params, euvs)
-        u3 = set(mmc.keys())
-        ymus = list(mmc.values())
-        yvus = list(mvc.values())
-        v_sigs = self.consistency_check(u3)
-        suvs, buvs = self.unmasking(v_sigs)
-        pus, puvs = [], []
-        private_keys = []
-        for v, suv in enumerate(suvs):
-            if suv:
-                suv_combined = points_to_secret_int(suv)
-                private_keys.append((v, DH.DiffieHellman(private_key=suv_combined)))
-        for (u, pku), (v, (_, pkv, _, _)) in itertools.product(private_keys, keylist.items()):
-            if u != v:
-                k = int.from_bytes(pku.gen_shared_key(pkv), 'big') % self.R
-                puvs.append(utils.gen_mask(k, self.params_len, self.R))
-                if u < v:
-                    puvs[-1] = -puvs[-1]
-        for buv in buvs:
-            if buv:
-                buv_combined = points_to_secret_int(buv)
-                pus.append(utils.gen_mask(buv_combined, self.params_len, self.R))
-        x = (
-            ((decode(sum(ymus) - encode(sum(pus)) + encode(sum(puvs))) / len(ymus))) /
-            np.sqrt(np.maximum(decode(sum(yvus) - encode(sum(pus)) + encode(sum(puvs))) / len(yvus), 1e-8))
-        )
+            m, v, s = c.update(params)
+            ms.append(m)
+            vs.append(v)
+            states.append(s)
+        x = (sum(ms) / len(ms)) / (np.sqrt(sum(vs) / len(vs)))
         params = self.unraveller(utils.ravel(params) - x)
         return params, State(np.mean([s.value for s in states]))
 
