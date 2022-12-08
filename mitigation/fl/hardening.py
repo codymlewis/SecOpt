@@ -111,9 +111,9 @@ def flip(
                 X = X_a + X_b
                 changed_Y = _apply(params, X)
                 if (changed_Y == b).all():
-                    distances[Y][b] = i * np.linalg.norm(m)
+                    distances[a][b] = i * np.linalg.norm(m)
                     return np.concatenate((X, orig_X)), np.concatenate((Y, orig_Y))
-            distances[Y, changed_Y] = steps * np.linalg.norm(m)
+            distances[a, changed_Y] = steps * np.linalg.norm(m)
             return np.concatenate((X, orig_X)), np.concatenate((Y, orig_Y))
         else:
             idx = rng.choice(np.where(data.Y == a)[0], min(data.batch_size, np.sum(data.Y == a)), replace=False)
@@ -126,9 +126,9 @@ def flip(
                 X = (1 - m) * X + m * delta
                 changed_Y = _apply(params, X)
                 if (changed_Y != Y).all():
-                    distances[Y, changed_Y] = i * np.linalg.norm(m)
+                    distances[a, changed_Y] = i * np.linalg.norm(m)
                     return np.concatenate((X, orig_X)), np.concatenate((Y, orig_Y))
-            distances[Y, changed_Y] = steps * np.linalg.norm(m)
+            distances[a, changed_Y] = steps * np.linalg.norm(m)
             return np.concatenate((X, orig_X)), np.concatenate((Y, orig_Y))
 
     return Hardening(update=update)
