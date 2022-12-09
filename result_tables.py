@@ -1,5 +1,7 @@
 """
 Some code that outputs a latex table from the csv result data in this repository.
+Works for the inversion and perfromance experiment results, mitigation has its
+own specific version
 """
 
 import pandas as pd
@@ -12,7 +14,7 @@ def format_model_names(model_names):
     return model_names
 
 def format_dataset_names(dataset_names):
-    dataset_names = dataset_names.str.replace('mnist', 'MNIST')
+    dataset_names = dataset_names.str.replace('mnist', 'FMNIST')
     dataset_names = dataset_names.str.replace('cifar10', 'CIFAR-10')
     dataset_names = dataset_names.str.replace('svhn', 'SVHN')
     return dataset_names
@@ -24,6 +26,13 @@ def format_opt_names(opt_names):
     return opt_names
 
 
+def format_aggregation_names(agg_names):
+    agg_names = agg_names.str.replace("fedavg", "FedAVG")
+    agg_names = agg_names.str.replace("secagg", "SecAgg")
+    agg_names = agg_names.str.replace("nerv", "Ours")
+    return agg_names
+
+
 def format_final_table(styler):
     columns = styler.columns
     acc_asr_cols = set(
@@ -31,7 +40,7 @@ def format_final_table(styler):
         if 'accuracy' in col.lower() or 'asr' in col.lower() or 'attack success' in col.lower()
     )
     other_columns = set(str(col) for col in columns) - acc_asr_cols
-    styler = styler.format(formatter=lambda s: f"{s:.3%}".replace('%', '\\%'), subset=list(acc_asr_cols))
+    styler = styler.format(formatter=lambda s: s.replace('%', '\\%'), subset=list(acc_asr_cols))
     styler = styler.format(precision=3, subset=list(other_columns))
     styler = styler.hide()
     return styler
@@ -39,16 +48,29 @@ def format_final_table(styler):
 
 if __name__ == "__main__":
     df = pd.read_csv('results.csv').drop(columns=['rounds', 'seed'])
-    grouping_col_names = list(set(df.columns) & {'batch_size', 'dataset', 'model', 'num_clients', 'opt'}) 
+    grouping_col_names = list(
+        set(df.columns) & {'batch_size', 'dataset', 'model', 'num_clients', 'opt', 'aggregation'}
+    ) 
     groups = df.groupby(grouping_col_names)
     g_mean = groups.mean().reset_index()
     g_std = groups.std().reset_index()
-    g_mean.columns = [col + ' (mean)' if col not in grouping_col_names else str(col) for col in g_mean.columns]
-    g_std.columns = [col + ' (std)' if col not in grouping_col_names else col for col in g_std.columns]
-    agg_results = g_mean.merge(g_std)
+    for col in g_mean.columns:
+        if col not in grouping_col_names:
+            if "accuracy" in col.lower() or 'asr' in col.lower() or 'attack success' in col.lower():
+                g_mean[col] = g_mean[col].map("{:.3%}".format) + g_std[col].map(" ({:.3%})".format)
+            else:
+                g_mean[col] = g_mean[col].astype(str) + " (" + g_std[col].astype(str) + ")"
+    agg_results = g_mean
     agg_results = agg_results.drop(columns=['batch_size', 'num_clients'])
     agg_results.model = agg_results.model.pipe(format_model_names)
     agg_results.dataset = agg_results.dataset.pipe(format_dataset_names)
     if 'opt' in agg_results.columns:
         agg_results.opt = agg_results.opt.pipe(format_opt_names)
+    if 'aggregation' in agg_results.columns:
+        agg_results.aggregation = agg_results.aggregation.pipe(format_aggregation_names)
+        cols = agg_results.columns.tolist()
+        agg_results = agg_results[
+            ["aggregation", "dataset", "model"] + list(set(cols) - {"aggregation", "dataset", "model"})
+        ]
+        agg_results = agg_results.sort_values(["aggregation", "dataset", "model"])
     print(agg_results.style.pipe(format_final_table).to_latex(position_float='centering'))
