@@ -69,6 +69,43 @@ class Client:
         return jaxopt.tree_util.tree_sub(global_params, self.params), X, Y
 
 
+class DPClient(Client):
+    def __init__(
+        self,
+        *args,
+        clipping_rate: float = 5,
+        noise_scale: float = 0.0001,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.rng = self.data.rng
+        self.clipping_rate = clipping_rate
+        self.noise_scale = noise_scale
+
+    def update(self, global_params):
+        grads, state = super().update(global_params)
+        grads = clip(grads, self.clipping_rate)
+        grads = noise(grads, self.noise_scale, self.rng)
+        return grads, state
+
+
+    def get_update(self, global_params):
+        grads, X, Y = super().get_update(global_params)
+        grads = clip(grads, self.clipping_rate)
+        grads = noise(grads, self.noise_scale, self.rng)
+        return grads, X, Y
+
+
+@jax.jit
+def clip(grads, clipping_rate):
+    norm = jnp.linalg.norm(jax.flatten_util.ravel_pytree(grads)[0])
+    return jax.tree_map(lambda g: g / jnp.maximum(1, norm / clipping_rate), grads)
+
+
+def noise(grads, scale, rng):
+    return jax.tree_map(lambda g: g + rng.normal(0, scale, size=g.shape), grads)
+
+
 class AdamClient(Client):
     def __init__(
         self,

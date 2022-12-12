@@ -1,4 +1,5 @@
 import os
+from functools import partial
 from typing import Any, Callable, Iterable, Tuple
 from numpy.typing import ArrayLike
 from argparse import ArgumentParser
@@ -200,6 +201,7 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
     parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
     parser.add_argument('-o', '--opt', type=str, default="sgd", help="Optimizer to use.")
+    parser.add_argument('--dp', nargs=2, type=float, default=None, help="Use client side DP.")
     parser.add_argument('--gen-images', action="store_true", help="Generate images from the inversion.")
     args = parser.parse_args()
 
@@ -213,7 +215,10 @@ if __name__ == "__main__":
     )
     model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(seed), dataset.input_init)
-    if args.opt.lower() == "sgd":
+    if args.dp is not None:
+        Client = partial(fl.client.DPClient, clipping_rate=args.dp[0], noise_scale=args.dp[1])
+        Server = fl.server.Server
+    elif args.opt.lower() == "sgd":
         Client = fl.client.Client
         Server = fl.server.Server
     else:
@@ -268,9 +273,16 @@ if __name__ == "__main__":
     if not args.gen_images:
         experiment_results = vars(args).copy()
         del experiment_results['gen_images']
+        del experiment_results['dp']
         experiment_results['Final accuracy'] = final_acc.item()
         experiment_results['PSNR'] = np.mean(psnrs)
         experiment_results['SSIM'] = np.mean(ssims)
+        if args.dp is not None:
+            experiment_results['clipping_rate'] = args.dp[0]
+            experiment_results['noise_scale'] = args.dp[1]
+        else:
+            experiment_results['clipping_rate'] = 0
+            experiment_results['noise_scale'] = 0
         df_results = pd.DataFrame(data=experiment_results, index=[0])
         if os.path.exists('results.csv'):
             old_results = pd.read_csv('results.csv')

@@ -5,6 +5,7 @@ own specific version
 """
 
 import pandas as pd
+from argparse import ArgumentParser
 
 
 def format_model_names(model_names):
@@ -47,10 +48,22 @@ def format_final_table(styler):
 
 
 if __name__ == "__main__":
+    parser = ArgumentParser(description="Transform an experiment results csv into a LaTeX table")
+    parser.add_argument('--dp', action="store_true", help="Parse differential privacy experiment results.")
+    args = parser.parse_args()
+
     df = pd.read_csv('results.csv').drop(columns=['rounds', 'seed'])
-    grouping_col_names = list(
-        set(df.columns) & {'batch_size', 'dataset', 'model', 'num_clients', 'opt', 'aggregation'}
-    ) 
+    if args.dp:
+        df = df.where(df.clipping_rate > 0).dropna()
+        df = df.drop(columns="opt")
+        grouping_col_set = {
+            'batch_size', 'dataset', 'model', 'num_clients', 'aggregation', 'clipping_rate', 'noise_scale'
+        }
+    else:
+        df = df.where(df.clipping_rate == 0).dropna()
+        df = df.drop(columns=["clipping_rate", "noise_scale"])
+        grouping_col_set = {'batch_size', 'dataset', 'model', 'num_clients', 'opt', 'aggregation'}
+    grouping_col_names = list(set(df.columns) & grouping_col_set) 
     groups = df.groupby(grouping_col_names)
     g_mean = groups.mean().reset_index()
     g_std = groups.std().reset_index()
@@ -58,6 +71,8 @@ if __name__ == "__main__":
         if col not in grouping_col_names:
             if "accuracy" in col.lower() or 'asr' in col.lower() or 'attack success' in col.lower():
                 g_mean[col] = g_mean[col].map("{:.3%}".format) + g_std[col].map(" ({:.3%})".format)
+            elif "psnr" in col.lower() or "ssim" in col.lower():
+                g_mean[col] = g_mean[col].map("{:.3f}".format) + g_std[col].map(" ({:.3f})".format)
             else:
                 g_mean[col] = g_mean[col].astype(str) + " (" + g_std[col].astype(str) + ")"
     agg_results = g_mean
@@ -73,4 +88,9 @@ if __name__ == "__main__":
             ["aggregation", "dataset", "model"] + list(set(cols) - {"aggregation", "dataset", "model"})
         ]
         agg_results = agg_results.sort_values(["aggregation", "dataset", "model"])
+    if args.dp:
+        cols = agg_results.columns.tolist()
+        first_cols = ["dataset", "model", "clipping_rate", "noise_scale"]
+        agg_results = agg_results[first_cols + list(set(cols) - set(first_cols))]
+        agg_results = agg_results.sort_values(first_cols)
     print(agg_results.style.pipe(format_final_table).to_latex(position_float='centering'))
