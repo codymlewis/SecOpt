@@ -127,12 +127,14 @@ class AdamClient(Client):
         return tree_mul_scalar(m, self.lr), tree_add_scalar(n, self.eps), state
 
     def get_update(self, global_params: Params) -> Tuple[Updates, NDArray, NDArray]:
-        self.data.get_unperturbed = True
-        X, Y, uX = next(self.data)
-        params, _ = self.step(params=global_params, state=self.state, X=X, Y=Y)
-        grads =  jaxopt.tree_util.tree_sub(global_params, self.params)
-        self.data.get_unperturbed = False
-        return grads, uX, Y
+        if self.data.perturb_data:
+            self.data.get_unperturbed = True
+            X, Y, uX = next(self.data)
+            params, _ = self.step(params=global_params, state=self.state, X=X, Y=Y)
+            grads =  jaxopt.tree_util.tree_sub(global_params, self.params)
+            self.data.get_unperturbed = False
+            return grads, uX, Y
+        return super().get_update(global_params)
 
 
 
