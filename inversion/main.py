@@ -201,6 +201,7 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for the RNG.")
     parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
     parser.add_argument('-o', '--opt', type=str, default="sgd", help="Optimizer to use.")
+    parser.add_argument('--perturb', action="store_true", help="Perturb client data if using adam optimizer.")
     parser.add_argument('--dp', nargs=2, type=float, default=None, help="Use client side DP.")
     parser.add_argument('--gen-images', action="store_true", help="Generate images from the inversion.")
     args = parser.parse_args()
@@ -208,11 +209,7 @@ if __name__ == "__main__":
     seed = round(args.seed * np.pi) + 500
 
     dataset = load_dataset(args.dataset, seed)
-    data = dataset.fed_split(
-        [args.batch_size for _ in range(args.num_clients)],
-        fl.distributions.lda,
-        in_memory=True,
-    )
+    data = dataset.fed_split([args.batch_size for _ in range(args.num_clients)], fl.distributions.lda)
     model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(seed), dataset.input_init)
     if args.dp is not None:
@@ -222,7 +219,7 @@ if __name__ == "__main__":
         Client = fl.client.Client
         Server = fl.server.Server
     else:
-        Client = fl.client.AdamClient
+        Client = partial(fl.client.AdamClient, perturb_data=args.perturb)
         Server = fl.server.AdamServer
 
     clients = [
@@ -274,9 +271,12 @@ if __name__ == "__main__":
         experiment_results = vars(args).copy()
         del experiment_results['gen_images']
         del experiment_results['dp']
+        del experiment_results['perturb']
         experiment_results['Final accuracy'] = final_acc.item()
         experiment_results['PSNR'] = np.mean(psnrs)
         experiment_results['SSIM'] = np.mean(ssims)
+        if args.perturb:
+            experiment_results['opt'] = f"perturbed {experiment_results['opt']}"
         if args.dp is not None:
             experiment_results['clipping_rate'] = args.dp[0]
             experiment_results['noise_scale'] = args.dp[1]

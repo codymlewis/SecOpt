@@ -112,17 +112,28 @@ class AdamClient(Client):
         *args,
         lr: float = 0.001,
         eps: float = 1e-8,
+        perturb_data: bool = False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.hardening = pgd(self.loss_fun, lr=lr / 100)
         self.lr = lr
         self.eps = eps
+        self.data.perturb_data = perturb_data
 
     def update(self, global_params: Params) -> Tuple[Updates, Updates, NamedTuple]:
         _, state = super().update(global_params)
         m, n = state.internal_state[0].mu, state.internal_state[0].nu
         return tree_mul_scalar(m, self.lr), tree_add_scalar(n, self.eps), state
+
+    def get_update(self, global_params: Params) -> Tuple[Updates, NDArray, NDArray]:
+        self.data.get_unperturbed = True
+        X, Y, uX = next(self.data)
+        params, _ = self.step(params=global_params, state=self.state, X=X, Y=Y)
+        grads =  jaxopt.tree_util.tree_sub(global_params, self.params)
+        self.data.get_unperturbed = False
+        return grads, uX, Y
+
 
 
 def pgd(

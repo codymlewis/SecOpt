@@ -6,59 +6,7 @@ from typing import Callable, Iterable, Any, Tuple, Optional, List
 from numpy.typing import NDArray
 import datasets
 import numpy as np
-
-
-class HFDataIter:
-    """Iterator that gives random batchs in pairs of $(X_i, y_i) : i \subseteq {1, \ldots, N}$"""
-
-    def __init__(self, ds: datasets.Dataset, batch_size: int, classes: int, rng: np.random.Generator):
-        """
-        Arguments:
-        - ds: The data to iterate over
-        - batch_size: Number of samples to get in each iteration
-        - classes: Number of unique classes in the dataset
-        - rng: Random number generator object for selection of batches
-        """
-        self.ds = ds
-        self.batch_size = len(ds) if batch_size is None else min(batch_size, len(ds))
-        self.len = len(ds)
-        self.classes = classes
-        self.rng = rng
-
-    def __iter__(self):
-        """Return this as an iterator."""
-        return self
-
-    def filter(self, filter_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
-        """
-        Make the dataset only contain a subsect specified in the input function.
-
-        Arguments:
-        - filter_fn: Function that filters out the data.
-        """
-        self.ds = self.ds.filter(filter_fn)
-        self.len = len(self.ds)
-        return self
-
-    def map(self, map_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
-        """
-        Mutate the dataset with a function
-
-        Arguments:
-        - map_fn: Function that changes the data
-        """
-        self.ds = self.ds.map(map_fn)
-        self.len = len(self.Y)
-        return self
-
-    def __next__(self) -> Tuple[NDArray, NDArray]:
-        """Get a random batch."""
-        idx = self.rng.choice(self.len, self.batch_size, replace=False)
-        return self.ds[idx]['X'], self.ds[idx]['Y']
-
-    def __len__(self) -> int:
-        """Get the number of unique samples in this iterator"""
-        return len(self.ds)
+import skimage
 
 
 class DataIter:
@@ -80,6 +28,8 @@ class DataIter:
         self.len = len(Y)
         self.classes = classes
         self.rng = rng
+        self.perturb_data = False
+        self.get_unperturbed = False
 
     def filter(self, filter_fn: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]):
         """
@@ -112,7 +62,14 @@ class DataIter:
     def __next__(self) -> Tuple[NDArray, NDArray]:
         """Get a random batch."""
         idx = self.rng.choice(self.len, self.batch_size, replace=False)
-        return self.X[idx], self.Y[idx]
+        bX, bY = self.X[idx], self.Y[idx]
+        if self.perturb_data:
+            if self.get_unperturbed:
+                oX = bX
+            bX = np.array([skimage.transform.rotate(x, self.rng.uniform(-10, 10)) for x in bX])
+            if self.get_unperturbed:
+                return bX, bY, oX
+        return bX, bY
 
     def __len__(self) -> int:
         """Get the number of unique samples in this iterator"""
@@ -152,8 +109,7 @@ class Dataset:
         idx: Optional[Iterable[int]] = None,
         filter_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,
         map_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,
-        in_memory: bool = True,
-    ) -> DataIter|HFDataIter:
+    ) -> DataIter:
         """
         Generate an iterator out of the dataset.
 
@@ -170,15 +126,10 @@ class Dataset:
             self.ds = self.ds.filter(filter_fn)
         if map_fn is not None:
             self.ds = self.ds.map(map_fn)
-        if in_memory:
-            X, Y = self.ds[split]['X'], self.ds[split]['Y']
-            if idx is not None:
-                X, Y = X[idx], Y[idx]
-            return DataIter(X, Y, batch_size, self.classes, rng)
-        ds = self.ds[split]
+        X, Y = self.ds[split]['X'], self.ds[split]['Y']
         if idx is not None:
-            ds = ds.select(idx)
-        return HFDataIter(ds, batch_size, self.classes, rng)
+            X, Y = X[idx], Y[idx]
+        return DataIter(X, Y, batch_size, self.classes, rng)
 
     def get_test_iter(
         self,
@@ -213,8 +164,7 @@ class Dataset:
         self,
         batch_sizes: Iterable[int],
         mapping: Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]] = None,
-        in_memory: bool = True,
-    ) -> List[DataIter|HFDataIter]:
+    ) -> List[DataIter]:
         """
         Divide the dataset for federated learning.
 
@@ -226,8 +176,5 @@ class Dataset:
         rng = np.random.default_rng(self.seed)
         if mapping is not None:
             distribution = mapping(self.ds['train']['Y'], len(batch_sizes), self.classes, rng)
-            return [
-                self.get_iter("train", b, idx=d, in_memory=in_memory)
-                for b, d in zip(batch_sizes, distribution)
-            ]
-        return [self.get_iter("train", b, in_memory=in_memory) for b in batch_sizes]
+            return [self.get_iter("train", b, idx=d) for b, d in zip(batch_sizes, distribution)]
+        return [self.get_iter("train", b) for b in batch_sizes]
