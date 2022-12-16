@@ -1,5 +1,6 @@
 import os
 from functools import partial
+import operator
 from typing import Any, Callable, Iterable, Tuple
 from numpy.typing import ArrayLike
 from argparse import ArgumentParser
@@ -156,13 +157,29 @@ def reploss(
         return dist + lamb_tv * total_variation(Z)
     return _apply
 
+
+def idlgloss(
+    model: nn.Module, params: PyTree, true_grads: ArrayLike, Y: Array
+) -> Callable[[Array], float]:
+    loss_fn = loss(model)
+    """Loss function for the representation gradient inversion attack."""
+    def _apply(Z: Array) -> float:
+        norm_tree = jax.tree_map(lambda a, b: jnp.sum((a - b)**2), jax.grad(loss_fn)(params, Z, Y), true_grads)
+        return jax.tree_util.tree_reduce(operator.add, norm_tree)
+    return _apply
+
+
 def evaluate_inversion(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike) -> Tuple[float, float]:
     """Quantitatively evaluate the quality of a gradient inversion."""
     X = X[Y.argsort()]
     Y.sort()
-    non_rep_labels = np.arange(np.max(Y) + 1)[np.bincount(Y) == 1]
-    zidx = np.where(np.isin(labels, Y) & np.isin(labels, non_rep_labels))[0]
-    xidx = np.where(np.isin(Y, labels) & np.isin(Y, non_rep_labels))[0]
+    if len(Y) > 1:
+        non_rep_labels = np.arange(np.max(Y) + 1)[np.bincount(Y) == 1]
+        zidx = np.where(np.isin(labels, Y) & np.isin(labels, non_rep_labels))[0]
+        xidx = np.where(np.isin(Y, labels) & np.isin(Y, non_rep_labels))[0]
+    else:
+        zidx = np.array([0])
+        xidx = np.array([0])
     if not len(zidx) or not len(xidx):
         return None, None
     psnrs, ssims = [], []
@@ -203,6 +220,7 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--opt', type=str, default="sgd", help="Optimizer to use.")
     parser.add_argument('--perturb', action="store_true", help="Perturb client data if using adam optimizer.")
     parser.add_argument('--dp', nargs=2, type=float, default=None, help="Use client side DP.")
+    parser.add_argument('--idlg', action="store_true", default=None, help="Use perform the iDLG attack.")
     parser.add_argument('--gen-images', action="store_true", help="Generate images from the inversion.")
     args = parser.parse_args()
 
@@ -250,10 +268,14 @@ if __name__ == "__main__":
         )[:args.batch_size].sort()
         true_reps = true_grads['params']['classifier']['kernel'].T[labels]
         Z = jax.random.normal(jax.random.PRNGKey(seed), (args.batch_size,) + dataset.input_shape)
+        if args.idlg:
+            solver_fun = idlgloss(model, params, true_grads, labels)
+        else:
+            solver_fun = reploss(model, params, true_reps)
         solver = jaxopt.OptaxSolver(
             opt=optax.adam(0.01),
             pre_update=lambda z, s: (jnp.clip(z, 0, 1), s),
-            fun=reploss(model, params, true_reps),
+            fun=solver_fun,
             maxiter=1000
         )
         Z, _ = solver.run(Z)
@@ -266,12 +288,15 @@ if __name__ == "__main__":
                 pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}")
                 psnrs.append(psnr)
                 ssims.append(ssim)
+            else:
+                pbar.set_postfix_str("None")
 
     if not args.gen_images:
         experiment_results = vars(args).copy()
         del experiment_results['gen_images']
         del experiment_results['dp']
         del experiment_results['perturb']
+        del experiment_results['idlg']
         experiment_results['Final accuracy'] = final_acc.item()
         experiment_results['PSNR'] = np.mean(psnrs)
         experiment_results['SSIM'] = np.mean(ssims)
