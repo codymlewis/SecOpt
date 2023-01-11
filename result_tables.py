@@ -91,6 +91,8 @@ if __name__ == "__main__":
     if args.dp:
         cols = agg_results.columns.tolist()
         first_cols = ["dataset", "model", "clipping_rate", "noise_scale"]
-        agg_results = agg_results[first_cols + list(set(cols) - set(first_cols))]
+        other_cols = list(set(cols) - set(first_cols))
+        other_cols.sort()
+        agg_results = agg_results[first_cols + other_cols]
         agg_results = agg_results.sort_values(first_cols)
     print(agg_results.style.pipe(format_final_table).to_latex(position_float='centering'))

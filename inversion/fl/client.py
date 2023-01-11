@@ -99,7 +99,7 @@ class DPClient(Client):
 @jax.jit
 def clip(grads, clipping_rate):
     norm = jnp.linalg.norm(jax.flatten_util.ravel_pytree(grads)[0])
-    return jax.tree_map(lambda g: g / jnp.maximum(1, norm / clipping_rate), grads)
+    return jax.tree_map(lambda g: g / jnp.minimum(1, norm / clipping_rate), grads)
 
 
 def noise(grads, scale, rng):
