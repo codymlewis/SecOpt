@@ -219,7 +219,7 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
     parser.add_argument('-o', '--opt', type=str, default="sgd", help="Optimizer to use.")
     parser.add_argument('--perturb', action="store_true", help="Perturb client data if using adam optimizer.")
-    parser.add_argument('--dp', nargs=2, type=float, default=None, help="Use client side DP.")
+    parser.add_argument('--dp', nargs=2, type=float, default=None, help="Use client side DP args: <clipping_rate> <noise_scale>.")
     parser.add_argument('--idlg', action="store_true", default=None, help="Use perform the iDLG attack.")
     parser.add_argument('--gen-images', action="store_true", help="Generate images from the inversion.")
     args = parser.parse_args()
