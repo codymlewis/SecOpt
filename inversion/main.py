@@ -233,7 +233,7 @@ if __name__ == "__main__":
     if args.dp is not None:
         Client = partial(fl.client.DPClient, clipping_rate=args.dp[0], noise_scale=args.dp[1])
         Server = fl.server.Server
-    elif args.opt.lower() == "sgd":
+    elif args.opt.lower() != "ours":
         Client = fl.client.Client
         Server = fl.server.Server
     else:
