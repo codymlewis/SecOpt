@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 
 import fl
 import models
+import classifier_metric
 
 
 PyTree = Any
@@ -41,7 +42,7 @@ def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
     return _apply
 
 
-def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array|Tuple[Array, Array], Array]]):
+def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array | Tuple[Array, Array], Array]]):
     """
     Calculate the accuracy of the model across the given dataset
 
@@ -51,7 +52,7 @@ def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array|Tuple
     - ds: Iterable data over which the accuracy is calculated
     """
     @jax.jit
-    def _apply(batch_X: Array|Tuple[Array, Array]) -> Array:
+    def _apply(batch_X: Array | Tuple[Array, Array]) -> Array:
         return jnp.argmax(model.apply(variables, batch_X), axis=-1)
     preds, Ys = [], []
     for X, Y in ds:
@@ -169,7 +170,9 @@ def idlgloss(
     return _apply
 
 
-def evaluate_inversion(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike) -> Tuple[float, float]:
+def evaluate_inversion(
+    X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike, dataset_name: str
+) -> Tuple[float, float]:
     """Quantitatively evaluate the quality of a gradient inversion."""
     X = X[Y.argsort()]
     Y.sort()
@@ -181,12 +184,13 @@ def evaluate_inversion(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLi
         zidx = np.array([0])
         xidx = np.array([0])
     if not len(zidx) or not len(xidx):
-        return None, None
+        return None, None, None
     psnrs, ssims = [], []
     for zi, xi in zip(zidx, xidx):
         psnrs.append(skimage.metrics.peak_signal_noise_ratio(Z[zi], X[xi], data_range=1))
         ssims.append(skimage.metrics.structural_similarity(Z[zi], X[xi], win_size=11, channel_axis=2))
-    return np.mean(psnrs), np.mean(ssims)
+    cms = classifier_metric.apply(Z[zidx], X[xidx], dataset_name="mnist")
+    return np.mean(psnrs), np.mean(ssims), np.mean(cms)
 
 
 def inversion_images(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike, client_id: int):
@@ -219,7 +223,8 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
     parser.add_argument('-o', '--opt', type=str, default="sgd", help="Optimizer to use.")
     parser.add_argument('--perturb', action="store_true", help="Perturb client data if using adam optimizer.")
-    parser.add_argument('--dp', nargs=2, type=float, default=None, help="Use client side DP args: <clipping_rate> <noise_scale>.")
+    parser.add_argument('--dp', nargs=2, type=float, default=None,
+                        help="Use client side DP args: <clipping_rate> <noise_scale>.")
     parser.add_argument('--idlg', action="store_true", default=None, help="Use perform the iDLG attack.")
     parser.add_argument('--gen-images', action="store_true", help="Generate images from the inversion.")
     args = parser.parse_args()
@@ -259,7 +264,7 @@ if __name__ == "__main__":
     print(f"Final accuracy: {final_acc:.3%}")
 
     all_grads, all_X, all_Y = server.get_updates(params)
-    psnrs, ssims = [], []
+    psnrs, ssims, cms = [], [], []
     print("Now inverting the final gradients...")
     for i in (pbar := trange(len(all_grads))):
         true_grads = all_grads[i]
@@ -283,11 +288,12 @@ if __name__ == "__main__":
         if args.gen_images:
             inversion_images(all_X[i], all_Y[i], Z, labels, i)
         else:
-            psnr, ssim = evaluate_inversion(all_X[i], all_Y[i], Z, labels)
-            if psnr is not None and ssim is not None:
-                pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}")
+            psnr, ssim, cm = evaluate_inversion(all_X[i], all_Y[i], Z, labels, args.dataset)
+            if psnr is not None and ssim is not None and cm is not None:
+                pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}, CM: {cm:.3f}")
                 psnrs.append(psnr)
                 ssims.append(ssim)
+                cms.append(cm)
             else:
                 pbar.set_postfix_str("None")
 
@@ -300,6 +306,7 @@ if __name__ == "__main__":
         experiment_results['Final accuracy'] = final_acc.item()
         experiment_results['PSNR'] = np.mean(psnrs)
         experiment_results['SSIM'] = np.mean(ssims)
+        experiment_results['CM'] = np.mean(cms)
         if args.perturb:
             experiment_results['opt'] = f"perturbed {experiment_results['opt']}"
         if args.dp is not None:

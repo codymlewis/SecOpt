@@ -8,7 +8,7 @@ mv *.png sgd/
 
 echo Next generating for ours...
 
-python main.py -m softmax -o adam --gen-images
+python main.py -m softmax -o ours --gen-images
 mkdir ours
 mv *.png ours/
 
