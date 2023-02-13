@@ -34,12 +34,13 @@ class TransitionBlock(nn.Module):
 
 class DenseBlock(nn.Module):
     blocks: list[int]
+    growth_rate: int = 32
     name: str
 
     @nn.compact
     def __call__(self, x, train=True):
         for i in range(self.blocks):
-            x = ConvBlock(32, name=f"{self.name}_block{i + 1}")(x, train)
+            x = ConvBlock(self.growth_rate, name=f"{self.name}_block{i + 1}")(x, train)
         return x
 
 
@@ -70,6 +71,36 @@ class DenseNet(nn.Module):
         return x
 
 
+class DenseNetBC(nn.Module):
+    classes: int
+    depth: int = 40
+    nb_dense_block: int = 3
+    growth_rate: int = 12
+    nb_filter: int = -1
+
+    @nn.compact
+    def __call__(self, x, train=True):
+        assert (self.depth - 4) % 3 == 0, "Depth - 4 must be a factor of 3"
+        count = int((self.depth - 4) / 3)
+        nb_layers = [count for _ in range(self.nb_dense_block)]
+        final_nb_layer = count
+        nb_filter = self.nb_filter if self.nb_filter > 0 else 2 * self.growth_rate
+
+        x = nn.Conv(nb_filter, (3, 3), (1, 1), padding='SAME', use_bias=False)(x)
+
+        for block_idx in range(self.nb_dense_block - 1):
+            x = DenseBlock(nb_layers[block_idx], name=f"conv_{block_idx}", growth_rate=self.growth_rate)(x, train)
+            x = TransitionBlock(1.0, name=f"pool_{block_idx}")(x, train)
+
+        x = DenseBlock(final_nb_layer, growth_rate=self.growth_rate, name="conv_final")(x, train)
+        x = nn.BatchNorm(axis=3, epsilon=1.001e-5, name="bn", use_running_average=not train)(x)
+        x = nn.relu(x)
+        x = einops.reduce(x, "b w h d -> b d", "mean")  # Global average pooling
+        x = nn.Dense(self.classes, name="predictions")(x)
+        x = nn.softmax(x)
+        return x
+
+
 class DenseNet121(nn.Module):
     classes: int = 1000
 
@@ -92,3 +123,11 @@ class DenseNet201(nn.Module):
     @nn.compact
     def __call__(self, x, train=True):
         return DenseNet(self.classes, [6, 12, 48, 32])(x, train)
+
+
+class DenseNetBC190(nn.Module):
+    classes: int = 1000
+
+    @nn.compact
+    def __call__(self, x, train=True):
+        return DenseNetBC(self.classes, 40, 3, 12, -1)(x, train)

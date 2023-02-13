@@ -26,7 +26,7 @@ def similarity(A, B):
 
 
 def apply(X, Xhat, dataset_name="mnist"):
-    model_name = {"mnist": "CNN", "cifar10": "DenseNet121", "svhn": "DenseNet121"}[dataset_name]
+    model_name = {"mnist": "CNN", "cifar10": "DenseNetBC190", "svhn": "DenseNet121"}[dataset_name]
     model = load_model(model_name)
     vars_template = model.init(jax.random.PRNGKey(0), get_dataset_sample(dataset_name))
     with open(f"classifier_metric/{model_name}.{dataset_name}.variables", "rb") as f:

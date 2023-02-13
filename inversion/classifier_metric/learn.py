@@ -30,15 +30,6 @@ class State(NamedTuple):
         return State(params=variables['params'], batch_stats=variables['batch_stats'])
 
 
-def transfer_vars(model_name, vars_template):
-    with open(f"params/{model_name}.variables", "rb") as f:
-        variables = serialization.from_bytes(vars_template, f.read())
-    variables = unfreeze(variables)
-    rootname = "DenseNet_0" if "DenseNet" in args.model else "ResNet_0"
-    variables['params'][rootname]['predictions'] = vars_template['params'][rootname]['predictions']
-    return freeze(variables)
-
-
 def loss(model):
     @jax.jit
     def _loss(variables, X, Y, scale=False):
@@ -163,32 +154,21 @@ if __name__ == "__main__":
 
     if args.model == "CNN":
         model = cnn.CNN(10)
-        variables = model.init(jax.random.PRNGKey(42), X[:1])
-        state = State.from_vars(variables)
-        opt = optax.adam(1e-3)
     else:
         model = getattr(
             densenet if "DenseNet" in args.model else resnetv2,
             args.model
         )(10)
-        vars_template = model.init(jax.random.PRNGKey(42), X[:1])
-        variables = transfer_vars(args.model, vars_template)
-        rootname = "DenseNet_0" if "DenseNet" in args.model else "ResNet_0"
-        state = State.from_vars(variables)
-        opt = optax.multi_transform(
-            {
-                k: optax.adam(1e-3) if k == "predictions" else optax.set_to_zero()
-                for k in state.params[rootname].keys()
-            },
-            freeze({rootname: {k: k for k in state.params[rootname].keys()}})
-        )
+    variables = model.init(jax.random.PRNGKey(42), X[:1])
+    state = State.from_vars(variables)
+    opt = optax.yogi(1e-3)
     opt_state = opt.init(state.params)
     trainer = train_step(opt, loss(model))
     rng = np.random.default_rng()
     train_len = len(X)
 
     for _ in (pbar := trange(args.steps)):
-        idx = rng.choice(train_len, 32, replace=False)
+        idx = rng.choice(train_len, 128 if "BC" in args.model else 512, replace=False)
         loss_val, state, opt_state = trainer(state, opt_state, X[idx], Y[idx])
         pbar.set_postfix_str(f"LOSS: {loss_val:.5f}")
     print(f"Final accuracy: {accuracy(model, state.to_vars(), ds['test']['X'], ds['test']['Y']):.3%}")
