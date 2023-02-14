@@ -3,7 +3,7 @@ from argparse import ArgumentParser
 
 import datasets
 from flax import serialization
-from flax.core.frozen_dict import unfreeze, freeze, FrozenDict
+from flax.core.frozen_dict import freeze, FrozenDict
 import jax
 import jax.numpy as jnp
 from jax import Array

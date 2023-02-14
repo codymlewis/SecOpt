@@ -287,17 +287,23 @@ if __name__ == "__main__":
         Z = np.array(Z)
         if args.gen_images:
             inversion_images(all_X[i], all_Y[i], Z, labels, i)
+        psnr, ssim, cm = evaluate_inversion(all_X[i], all_Y[i], Z, labels, args.dataset)
+        if psnr is not None and ssim is not None and cm is not None:
+            pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}, CM: {cm:.3f}")
+            psnrs.append(psnr)
+            ssims.append(ssim)
+            cms.append(cm)
         else:
-            psnr, ssim, cm = evaluate_inversion(all_X[i], all_Y[i], Z, labels, args.dataset)
-            if psnr is not None and ssim is not None and cm is not None:
-                pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}, CM: {cm:.3f}")
-                psnrs.append(psnr)
-                ssims.append(ssim)
-                cms.append(cm)
-            else:
-                pbar.set_postfix_str("None")
+            pbar.set_postfix_str("None")
 
-    if not args.gen_images:
+    if args.gen_images:
+        print("-" * 32)
+        print(f"Final accuracy: {final_acc.item()}")
+        print(f"PSNR: {np.mean(psnrs)}")
+        print(f"SSIM: {np.mean(ssims)}")
+        print(f"CM (unstandardized): {np.mean(cms)}")
+        print("-" * 32)
+    else:
         experiment_results = vars(args).copy()
         del experiment_results['gen_images']
         del experiment_results['dp']

@@ -21,8 +21,8 @@ def get_dataset_sample(dataset_name):
         case _: raise NotImplementedError(f"Dataset {dataset_name} has not been implemented.")
 
 
-def similarity(A, B):
-    return 1 - jnp.sum(A * B, axis=-1) / (jnp.linalg.norm(A, axis=-1) * jnp.linalg.norm(B, axis=-1))
+def distance(A, B):
+    return abs(1 - jnp.sum(A * B, axis=-1) / (jnp.linalg.norm(A, axis=-1) * jnp.linalg.norm(B, axis=-1)))
 
 
 def apply(X, Xhat, dataset_name="mnist"):
@@ -33,4 +33,4 @@ def apply(X, Xhat, dataset_name="mnist"):
         variables = serialization.from_bytes(vars_template, f.read())
     logits = model.apply(variables, X, train=False)
     logits_hat = model.apply(variables, Xhat, train=False)
-    return similarity(logits, logits_hat)
+    return distance(logits, logits_hat)
