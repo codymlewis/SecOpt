@@ -14,6 +14,7 @@ def format_model_names(model_names):
     model_names = model_names.str.replace('cnn2', 'CNN2')
     return model_names
 
+
 def format_dataset_names(dataset_names):
     dataset_names = dataset_names.str.replace('mnist', 'FMNIST')
     dataset_names = dataset_names.str.replace('cifar10', 'CIFAR-10')
@@ -60,10 +61,11 @@ if __name__ == "__main__":
             'batch_size', 'dataset', 'model', 'num_clients', 'aggregation', 'clipping_rate', 'noise_scale'
         }
     else:
-        df = df.where(df.clipping_rate == 0).dropna()
-        df = df.drop(columns=["clipping_rate", "noise_scale"])
+        if "clipping_rate" in df.columns:
+            df = df.where(df.clipping_rate == 0).dropna()
+            df = df.drop(columns=["clipping_rate", "noise_scale"])
         grouping_col_set = {'batch_size', 'dataset', 'model', 'num_clients', 'opt', 'aggregation'}
-    grouping_col_names = list(set(df.columns) & grouping_col_set) 
+    grouping_col_names = list(set(df.columns) & grouping_col_set)
     groups = df.groupby(grouping_col_names)
     g_mean = groups.mean().reset_index()
     g_std = groups.std().reset_index()
