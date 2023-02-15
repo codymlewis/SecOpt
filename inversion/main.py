@@ -188,8 +188,8 @@ def evaluate_inversion(
     psnrs, ssims = [], []
     for zi, xi in zip(zidx, xidx):
         psnrs.append(skimage.metrics.peak_signal_noise_ratio(Z[zi], X[xi], data_range=1))
-        ssims.append(skimage.metrics.structural_similarity(Z[zi], X[xi], win_size=11, channel_axis=2))
-    cms = classifier_metric.apply(Z[zidx], X[xidx], dataset_name="mnist")
+        ssims.append(abs(skimage.metrics.structural_similarity(Z[zi], X[xi], win_size=11, channel_axis=2)))
+    cms = classifier_metric.apply(Z[zidx], X[xidx], dataset_name=dataset_name)
     return np.mean(psnrs), np.mean(ssims), np.mean(cms)
 
 

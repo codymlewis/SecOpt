@@ -9,7 +9,7 @@ def load_model(model_name):
     match model_name:
         case "CNN": return cnn.CNN(10)
         case "DenseNet121": return densenet.DenseNet121(10)
-        case "ResNet50V2": return resnetv2.ResNet50V2(10)
+        case "DenseNetBC190": return densenet.DenseNetBC190(10)
         case _: raise NotImplementedError(f"Model {model_name} has not been implemented.")
 
 
