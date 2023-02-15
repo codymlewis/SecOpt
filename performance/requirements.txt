@@ -6,5 +6,4 @@ datasets
 tqdm
 numpy
 einops
-pyseltongue
 pycryptodome

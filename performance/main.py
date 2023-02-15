@@ -134,7 +134,7 @@ def load_svhn(seed: int) -> fl.data.Dataset:
 
 def load_agg_module(name: str) -> Tuple[Any, Any]:
     match name:
-        case "fedavg": return fl.fedavg
+        case "fedavg" | "adam": return fl.fedavg
         case "secagg": return fl.secagg
         case "nerv": return fl.nerv
         case _: raise NotImplementedError(f"Aggregation method {name} has not been implmented.")
@@ -165,7 +165,7 @@ if __name__ == "__main__":
         agg.client.Client(
             i,
             params,
-            optax.sgd(0.1),
+            optax.adam(0.001) if args.aggregation == "adam" else optax.sgd(0.1),
             loss(model),
             d,
             epochs=args.epochs
