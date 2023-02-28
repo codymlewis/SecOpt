@@ -1,4 +1,5 @@
 import os
+from functools import partial
 from typing import Any, Callable, Iterable, Tuple
 from argparse import ArgumentParser
 import einops
@@ -36,7 +37,7 @@ def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
     return _apply
 
 
-def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array|Tuple[Array, Array], Array]]):
+def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array | Tuple[Array, Array], Array]]):
     """
     Calculate the accuracy of the model across the given dataset
 
@@ -46,7 +47,7 @@ def accuracy(model: nn.Module, variables: PyTree, ds: Iterable[Tuple[Array|Tuple
     - ds: Iterable data over which the accuracy is calculated
     """
     @jax.jit
-    def _apply(batch_X: Array|Tuple[Array, Array]) -> Array:
+    def _apply(batch_X: Array | Tuple[Array, Array]) -> Array:
         return jnp.argmax(model.apply(variables, batch_X), axis=-1)
     preds, Ys = [], []
     for X, Y in ds:
@@ -134,9 +135,9 @@ def load_svhn(seed: int) -> fl.data.Dataset:
 
 def load_agg_module(name: str) -> Tuple[Any, Any]:
     match name:
-        case "fedavg" | "adam": return fl.fedavg
+        case "fedavg" | "adam" | "fedadam": return fl.fedavg
         case "secagg": return fl.secagg
-        case "nerv": return fl.nerv
+        case "ours": return fl.nerv
         case _: raise NotImplementedError(f"Aggregation method {name} has not been implmented.")
 
 
@@ -152,12 +153,15 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
     parser.add_argument('-e', '--epochs', type=int, default=1, help="Number of epochs to train for in each round.")
     parser.add_argument('-a', '--aggregation', type=str, default="fedavg", help="Aggregation algorithm to use.")
+    parser.add_argument('-i', '--iid', type=float, default=0.5, help="Specify the alpha parameter for the LDA.")
+    parser.add_argument('--efficient', action='store_true',
+                        help="Run an efficient form of the secure aggregation algorithms")
     args = parser.parse_args()
 
     seed = round(args.seed * np.pi) + 500
 
     dataset = load_dataset(args.dataset, seed)
-    data = dataset.fed_split([args.batch_size for _ in range(args.num_clients)], fl.data.lda)
+    data = dataset.fed_split([args.batch_size for _ in range(args.num_clients)], partial(fl.data.lda, alpha=args.iid))
     agg = load_agg_module(args.aggregation)
     model = models.load_model(args.model)
     params = model.init(jax.random.PRNGKey(seed), dataset.input_init)
@@ -172,7 +176,10 @@ if __name__ == "__main__":
         )
         for i, d in enumerate(data)
     ]
-    server = agg.server.Server(params, clients, maxiter=args.rounds, seed=seed)
+    if args.aggregation == "fedadam":
+        server = agg.server.Server(params, clients, maxiter=args.rounds, seed=seed, optimizer=optax.adam(0.01))
+    else:
+        server = agg.server.Server(params, clients, maxiter=args.rounds, seed=seed, efficient=args.efficient)
     state = server.init_state(params)
 
     for _ in (pbar := trange(server.maxiter)):

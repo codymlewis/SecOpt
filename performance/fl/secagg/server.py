@@ -27,6 +27,7 @@ class State(NamedTuple):
 
 class Server:
     """A secure aggregation server, arguably also the TTP."""
+
     def __init__(
         self,
         params: Params,
@@ -34,6 +35,7 @@ class Server:
         maxiter: int = 5,
         seed: Optional[int] = None,
         R: int = 2**8 - 1,
+        efficient: bool = False
     ):
         """
         Parameters:
@@ -52,6 +54,7 @@ class Server:
         self.params_len = len(flattened_params)
         self.unraveller = jax.jit(unraveller)
         self.R = R
+        self.efficient = efficient
         self.setup()
 
     def setup(self):
@@ -70,6 +73,19 @@ class Server:
         return State(np.inf)
 
     def update(self, params: Params, state: State) -> Tuple[Params, State]:
+        return self.efficient_update(params, state) if self.efficient else self.secure_update(params, state)
+
+    def efficient_update(self, params: Params, state: State) -> Tuple[Params, State]:
+        grads, states = [], []
+        for c in self.clients:
+            g, s = c.efficient_update(params)
+            grads.append(g)
+            states.append(s)
+        x = decode(sum(grads)) / len(grads)
+        params = self.unraveller(utils.ravel(params) - x)
+        return params, State(np.mean([s.value for s in states]))
+
+    def secure_update(self, params: Params, state: State) -> Tuple[Params, State]:
         keys = self.advertise_keys()
         keylist = {u: (cu, su, sigu) for u, (cu, su, sigu) in keys.items()}
         euvs = self.share_keys(keylist)

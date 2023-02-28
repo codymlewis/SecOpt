@@ -8,7 +8,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def lda(labels: Iterable[int], nclients: int, nclasses: int, rng: np.random.Generator, alpha: float=0.5):
+def lda(labels: Iterable[int], nclients: int, nclasses: int, rng: np.random.Generator, alpha: float = 0.5):
     r"""
     Latent Dirichlet allocation defined in https://arxiv.org/abs/1909.06335
     default value from https://arxiv.org/abs/2002.06440
@@ -28,7 +28,7 @@ def lda(labels: Iterable[int], nclients: int, nclasses: int, rng: np.random.Gene
 
 
 class DataIter:
-    """Iterator that gives random batchs in pairs of $(X_i, Y_i) : i \subseteq {1, \ldots, N}$"""
+    """Iterator that gives random batchs in pairs of (X_i, Y_i) : i in {1, ..., N}"""
 
     def __init__(self, X: NDArray, Y: NDArray, batch_size: int, classes: int, rng: np.random.Generator):
         """
@@ -113,7 +113,7 @@ class Dataset:
 
     def get_iter(
         self,
-        split: str|Iterable[str],
+        split: str | Iterable[str],
         batch_size: Optional[int] = None,
         idx: Optional[Iterable[int]] = None,
         filter_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,

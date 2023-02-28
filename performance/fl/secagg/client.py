@@ -54,6 +54,17 @@ class Client:
         self.unraveller = jax.jit(unraveller)
         self.R = R
 
+    def efficient_update(self, params: Params) -> Tuple[Updates, NamedTuple]:
+        """
+        Perform local training for this round and return the resulting gradient and state
+
+        Parameters:
+        - params: Global parameters downloaded for this round of training
+        """
+        g, s = self.update(params)
+        g = encode(g)
+        return g, s
+
     def update(self, params: Params) -> Tuple[Updates, NamedTuple]:
         """
         Perform local training for this round and return the resulting gradient and state
@@ -158,11 +169,14 @@ def encrypt_and_digest(p, k):
 def decrypt_and_verify(ct, k):
     return AES.new(k, AES.MODE_EAX, nonce=b'secagg').decrypt_and_verify(*ct)
 
+
 def to_bytes(i):
     return i.to_bytes(ceil(i.bit_length() / 8), 'big')
 
+
 def secret_int_to_points(x, k, n):
     return Shamir.split(k, n, x)
+
 
 def encode(x):
     return x * 1e10

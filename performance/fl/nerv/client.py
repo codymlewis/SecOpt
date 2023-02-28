@@ -63,6 +63,18 @@ class Client:
         self.b1 = b1
         self.b2 = b2
 
+    def efficient_update(self, params: Params) -> Tuple[Updates, NamedTuple]:
+        """
+        Perform local training for this round and return the resulting gradient and state
+
+        Parameters:
+        - params: Global parameters downloaded for this round of training
+        """
+        m, v, s = self.update(params)
+        m = encode(m)
+        v = encode(v)
+        return m, v, s
+
     def update(self, params: Params) -> Tuple[Updates, NamedTuple]:
         """
         Perform local training for this round and return the resulting gradient and state
