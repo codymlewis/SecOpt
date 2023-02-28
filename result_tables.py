@@ -12,6 +12,7 @@ def format_model_names(model_names):
     model_names = model_names.str.replace('lenet', 'LeNet')
     model_names = model_names.str.replace('cnn1', 'CNN1')
     model_names = model_names.str.replace('cnn2', 'CNN2')
+    model_names = model_names.str.replace('resnet', 'ResNet18 V2')
     return model_names
 
 
@@ -25,6 +26,7 @@ def format_dataset_names(dataset_names):
 def format_opt_names(opt_names):
     opt_names = opt_names.str.replace('sgd', 'SGD')
     opt_names = opt_names.str.replace('adam', 'Adam')
+    opt_names = opt_names.str.replace('ours', 'Ours')
     return opt_names
 
 
@@ -51,6 +53,7 @@ def format_final_table(styler):
 if __name__ == "__main__":
     parser = ArgumentParser(description="Transform an experiment results csv into a LaTeX table")
     parser.add_argument('--dp', action="store_true", help="Parse differential privacy experiment results.")
+    parser.add_argument('--idlg', action="store_true", help="Parse iDLG experiment results.")
     args = parser.parse_args()
 
     df = pd.read_csv('results.csv').drop(columns=['rounds', 'seed'])
@@ -65,6 +68,12 @@ if __name__ == "__main__":
             df = df.where(df.clipping_rate == 0).dropna()
             df = df.drop(columns=["clipping_rate", "noise_scale"])
         grouping_col_set = {'batch_size', 'dataset', 'model', 'num_clients', 'opt', 'aggregation'}
+
+    if args.idlg:
+        df = df.where(df.batch_size == 1).dropna()
+    else:
+        df = df.where(df.batch_size > 1).dropna()
+
     grouping_col_names = list(set(df.columns) & grouping_col_set)
     groups = df.groupby(grouping_col_names)
     g_mean = groups.mean().reset_index()
@@ -73,7 +82,7 @@ if __name__ == "__main__":
         if col not in grouping_col_names:
             if "accuracy" in col.lower() or 'asr' in col.lower() or 'attack success' in col.lower():
                 g_mean[col] = g_mean[col].map("{:.3%}".format) + g_std[col].map(" ({:.3%})".format)
-            elif "psnr" in col.lower() or "ssim" in col.lower():
+            elif "psnr" in col.lower() or "ssim" in col.lower() or "cm" in col.lower():
                 g_mean[col] = g_mean[col].map("{:.3f}".format) + g_std[col].map(" ({:.3f})".format)
             else:
                 g_mean[col] = g_mean[col].astype(str) + " (" + g_std[col].astype(str) + ")"
@@ -83,6 +92,11 @@ if __name__ == "__main__":
     agg_results.dataset = agg_results.dataset.pipe(format_dataset_names)
     if 'opt' in agg_results.columns:
         agg_results.opt = agg_results.opt.pipe(format_opt_names)
+        cols = agg_results.columns.tolist()
+        agg_results = agg_results[
+            ["opt", "dataset", "model", "Final accuracy"] + list(set(cols) - {"opt", "dataset", "model", "Final accuracy"})
+        ]
+        agg_results = agg_results.sort_values(["opt", "dataset", "model"])
     if 'aggregation' in agg_results.columns:
         agg_results.aggregation = agg_results.aggregation.pipe(format_aggregation_names)
         cols = agg_results.columns.tolist()
