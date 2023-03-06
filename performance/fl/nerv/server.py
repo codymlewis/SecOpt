@@ -5,6 +5,7 @@ A server for federated learning.
 import itertools
 from typing import Any, NamedTuple, Tuple, Iterable, Optional
 import jax
+import optax
 from optax import Params
 import numpy as np
 from Crypto.PublicKey import ECC
@@ -23,6 +24,7 @@ class State(NamedTuple):
     """A simple global state class"""
     value: float
     """The result of the function being learned"""
+    opt_state: optax.OptState
 
 
 class Server:
@@ -35,7 +37,8 @@ class Server:
         maxiter: int = 5,
         seed: Optional[int] = None,
         R: int = 2**8 - 1,
-        efficient: bool = False
+        efficient: bool = False,
+        optimizer: optax.GradientTransformation = optax.sgd(1)
     ):
         """
         Parameters:
@@ -54,6 +57,7 @@ class Server:
         self.unraveller = jax.jit(unraveller)
         self.R = R
         self.efficient = efficient
+        self.opt = optimizer
         self.setup()
 
     def setup(self):
@@ -69,12 +73,13 @@ class Server:
 
     def init_state(self, params: Params) -> State:
         """Initialize the server state"""
-        return State(np.inf)
+        opt_state = self.opt.init(params)
+        return State(np.inf, opt_state)
 
     def update(self, params: Params, state: State) -> Tuple[Params, State]:
         return self.efficient_update(params, state) if self.efficient else self.secure_update(params, state)
 
-    def efficient_update(self, params: Params, state: State) -> Tuple[Params, State]:
+    def efficient_update(self, params: Params, server_state: State) -> Tuple[Params, State]:
         ms, vs, states = [], [], []
         for c in self.clients:
             m, v, s = c.efficient_update(params)
@@ -82,10 +87,12 @@ class Server:
             vs.append(v)
             states.append(s)
         x = (decode(sum(ms)) / len(ms)) / (np.sqrt(decode(sum(vs)) / len(vs)))
-        params = self.unraveller(utils.ravel(params) - x)
-        return params, State(np.mean([s.value for s in states]))
+        grads = self.unraveller(x)
+        updates, opt_state = self.opt.update(grads, server_state.opt_state, params)
+        params = optax.apply_updates(params, updates)
+        return params, State(np.mean([s.value for s in states]), opt_state)
 
-    def secure_update(self, params: Params, state: State) -> Tuple[Params, State]:
+    def secure_update(self, params: Params, server_state: State) -> Tuple[Params, State]:
         keys = self.advertise_keys()
         keylist = {u: (cu, su, sigu) for u, (cu, su, sigu) in keys.items()}
         euvs = self.share_keys(keylist)
@@ -118,8 +125,10 @@ class Server:
             ((decode(sum(ymus) - encode(sum(pus)) + encode(sum(puvs))) / len(ymus))) /
             np.sqrt(np.maximum(decode(sum(yvus) - encode(sum(pus)) + encode(sum(puvs))) / len(yvus), 1e-8))
         )
-        params = self.unraveller(utils.ravel(params) - x)
-        return params, State(np.mean([s.value for s in states]))
+        grads = self.unraveller(x)
+        updates, opt_state = self.opt.update(grads, server_state.opt_state, params)
+        params = optax.apply_updates(params, updates)
+        return params, State(np.mean([s.value for s in states]), opt_state)
 
     def advertise_keys(self):
         return {c.id: c.advertise_keys() for c in self.clients}

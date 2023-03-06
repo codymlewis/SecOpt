@@ -137,7 +137,7 @@ def load_agg_module(name: str) -> Tuple[Any, Any]:
     match name:
         case "fedavg" | "adam" | "fedadam": return fl.fedavg
         case "secagg": return fl.secagg
-        case "ours": return fl.nerv
+        case "ours" | "oursfedadam": return fl.nerv
         case _: raise NotImplementedError(f"Aggregation method {name} has not been implmented.")
 
 
@@ -176,8 +176,15 @@ if __name__ == "__main__":
         )
         for i, d in enumerate(data)
     ]
-    if args.aggregation == "fedadam":
-        server = agg.server.Server(params, clients, maxiter=args.rounds, seed=seed, optimizer=optax.adam(0.01))
+    if "fedadam" in args.aggregation:
+        server = agg.server.Server(
+            params,
+            clients,
+            maxiter=args.rounds,
+            seed=seed,
+            optimizer=optax.adam(0.0005 if "ours" in args.aggregation else 0.01),
+            efficient=args.efficient
+        )
     else:
         server = agg.server.Server(params, clients, maxiter=args.rounds, seed=seed, efficient=args.efficient)
     state = server.init_state(params)
