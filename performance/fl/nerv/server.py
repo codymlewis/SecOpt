@@ -90,7 +90,7 @@ class Server:
         grads = self.unraveller(x)
         updates, opt_state = self.opt.update(grads, server_state.opt_state, params)
         params = optax.apply_updates(params, updates)
-        return params, State(np.mean([s.value for s in states]), opt_state)
+        return params, State(np.mean([s.value for s in states if not np.isnan(s.value)]), opt_state)
 
     def secure_update(self, params: Params, server_state: State) -> Tuple[Params, State]:
         keys = self.advertise_keys()
