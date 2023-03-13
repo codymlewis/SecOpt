@@ -15,6 +15,7 @@ PyTree = Any
 
 class Client:
     """Standard federated learning client with optional model hardening."""
+
     def __init__(
         self,
         params: Params,
@@ -88,7 +89,6 @@ class DPClient(Client):
         grads = noise(grads, self.noise_scale, self.rng)
         return grads, state
 
-
     def get_update(self, global_params):
         grads, X, Y = super().get_update(global_params)
         grads = clip(grads, self.clipping_rate)
@@ -134,8 +134,11 @@ class AdamClient(Client):
             grads = jaxopt.tree_util.tree_sub(global_params, self.params)
             self.data.get_unperturbed = False
             return grads, uX, Y
-        return super().get_update(global_params)
 
+        X, Y = next(self.data)
+        _, state = self.step(params=global_params, state=self.state, X=X, Y=Y)
+        m, n = state.internal_state[0].mu, state.internal_state[0].nu
+        return m, tree_add_scalar(n, self.eps), X, Y
 
 
 def pgd(

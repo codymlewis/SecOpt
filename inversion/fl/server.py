@@ -22,6 +22,7 @@ class State(NamedTuple):
 
 class Server:
     """Federated averaging server."""
+
     def __init__(
         self,
         params: Params,
@@ -84,7 +85,8 @@ class Server:
             all_grads.append(grads)
             all_X.append(X)
             all_Y.append(Y)
-        return all_grads, all_X, all_Y
+        meaned_grads = tree_mean(*all_grads)
+        return all_grads, meaned_grads, all_X, all_Y
 
 
 class AdamServer(Server):
@@ -110,6 +112,26 @@ class AdamServer(Server):
         meaned_ns = tree_mean(*all_ns)
         params = tree_add_scalar_mul(params, -1, tree_adam(meaned_ms, meaned_ns))
         return params, State(np.mean([s.value for s in all_states]))
+
+    def get_updates(self, params: Params):
+        """
+        Get a set of updates from each of the clients, and their average
+
+        Arguments:
+        - params: Model parameters
+        """
+        all_grads, all_ms, all_ns, all_X, all_Y = [], [], [], [], []
+        for c in self.clients:
+            m, n, X, Y = c.get_update(params)
+            all_ms.append(m)
+            all_ns.append(n)
+            all_grads.append(tree_adam(m, n))
+            all_X.append(X)
+            all_Y.append(Y)
+        meaned_ms = tree_mean(*all_ms)
+        meaned_ns = tree_mean(*all_ns)
+        meaned_grads = tree_adam(meaned_ms, meaned_ns)
+        return all_grads, meaned_grads, all_X, all_Y
 
 
 @jax.jit

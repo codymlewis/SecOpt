@@ -21,7 +21,6 @@ import matplotlib.pyplot as plt
 
 import fl
 import models
-import classifier_metric
 
 
 PyTree = Any
@@ -181,23 +180,20 @@ def evaluate_inversion(
     """Quantitatively evaluate the quality of a gradient inversion."""
     X = X[Y.argsort()]
     Y.sort()
-    if len(Y) > 1:
-        non_rep_labels = np.arange(np.max(Y) + 1)[np.bincount(Y) == 1]
-        zidx = np.where(np.isin(labels, Y) & np.isin(labels, non_rep_labels))[0]
-        xidx = np.where(np.isin(Y, labels) & np.isin(Y, non_rep_labels))[0]
-    else:
-        zidx = np.array([0])
-        xidx = np.array([0])
-    if not len(zidx) or not len(xidx):
-        return None, None, None, None
+    indices = {
+        np.where(labels == y)[0].item(): [xi for xi in np.where(y == labels)[0]] for y in Y if (labels == y).sum() > 0
+    }
     psnrs, ssims, css = [], [], []
-    for zi, xi in zip(zidx, xidx):
-        psnrs.append(skimage.metrics.peak_signal_noise_ratio(Z[zi], X[xi], data_range=1))
-        ssims.append(abs(skimage.metrics.structural_similarity(Z[zi], X[xi], win_size=11, channel_axis=2)))
-        css.append(cosine_sim(Z[zi], X[xi]))
-    cms = classifier_metric.apply(Z[zidx], X[xidx], dataset_name=dataset_name)
-    # print(f"{css=}")
-    return np.mean(psnrs), np.mean(ssims), np.max(css), np.mean(cms)
+    for zi, xis in indices.items():
+        psnr_choices, ssim_choices, cs_choices = [], [], []
+        for xi in xis:
+            psnr_choices.append(skimage.metrics.peak_signal_noise_ratio(Z[zi], X[xi], data_range=1))
+            ssim_choices.append(abs(skimage.metrics.structural_similarity(Z[zi], X[xi], win_size=11, channel_axis=2)))
+            cs_choices.append(cosine_sim(Z[zi], X[xi]))
+        psnrs.append(max(psnr_choices))
+        ssims.append(max(ssim_choices))
+        css.append(max(cs_choices))
+    return psnrs, ssims, css
 
 
 def inversion_images(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike, client_id: int):
@@ -220,6 +216,29 @@ def inversion_images(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike
         plt.clf()
 
 
+def invert_and_evaluate(i, true_grads, X, Y, seed, batch_size, dataset, model, params, gen_images):
+    labels = jnp.argsort(
+        jnp.min(true_grads['params']['classifier']['kernel'], axis=0)
+    )[:batch_size].sort()
+    true_reps = true_grads['params']['classifier']['kernel'].T[labels]
+    Z = jax.random.normal(jax.random.PRNGKey(seed), (batch_size,) + dataset.input_shape)
+    if args.idlg:
+        solver_fun = idlgloss(model, params, true_grads, labels)
+    else:
+        solver_fun = reploss(model, params, true_reps)
+    solver = jaxopt.OptaxSolver(
+        opt=optax.adam(0.01),
+        pre_update=lambda z, s: (jnp.clip(z, 0, 1), s),
+        fun=solver_fun,
+        maxiter=1000
+    )
+    Z, _ = solver.run(Z)
+    Z = np.array(jnp.clip(Z, 0, 1))
+    if gen_images:
+        inversion_images(X, Y, Z, labels, i)
+    return evaluate_inversion(X, Y, Z, labels, dataset.name)
+
+
 if __name__ == "__main__":
     parser = ArgumentParser(description="Experiments looking at adversarial training against backdoor attacks.")
     parser.add_argument('-b', '--batch-size', type=int, default=8, help="Size of batches for training.")
@@ -238,6 +257,7 @@ if __name__ == "__main__":
 
     seed = round(args.seed * np.pi) + 500
 
+    # Training setup
     dataset = load_dataset(args.dataset, seed)
     data = dataset.fed_split([args.batch_size for _ in range(args.num_clients)], fl.distributions.lda)
     model = models.load_model(args.model)
@@ -263,6 +283,8 @@ if __name__ == "__main__":
     ]
     server = Server(params, clients, maxiter=args.rounds, seed=seed)
     state = server.init_state(params)
+
+    # Training model
     for _ in (pbar := trange(server.maxiter)):
         params, state = server.update(params, state)
         pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
@@ -270,69 +292,56 @@ if __name__ == "__main__":
     final_acc = accuracy(model, params, test_data)
     print(f"Final accuracy: {final_acc:.3%}")
 
-    all_grads, all_X, all_Y = server.get_updates(params)
-    psnrs, ssims, css, cms = [], [], [], []
-    print("Now inverting the final gradients...")
+    # Inversion of gradients
+    all_grads, global_grads, all_X, all_Y = server.get_updates(params)
+    psnrs, ssims, css = [], [], []
+    print("Now inverting the final client gradients...")
     for i in (pbar := trange(len(all_grads))):
-        true_grads = all_grads[i]
-        labels = jnp.argsort(
-            jnp.min(true_grads['params']['classifier']['kernel'], axis=0)
-        )[:args.batch_size].sort()
-        true_reps = true_grads['params']['classifier']['kernel'].T[labels]
-        Z = jax.random.normal(jax.random.PRNGKey(seed), (args.batch_size,) + dataset.input_shape)
-        if args.idlg:
-            solver_fun = idlgloss(model, params, true_grads, labels)
-        else:
-            solver_fun = reploss(model, params, true_reps)
-        solver = jaxopt.OptaxSolver(
-            opt=optax.adam(0.01),
-            pre_update=lambda z, s: (jnp.clip(z, 0, 1), s),
-            fun=solver_fun,
-            maxiter=1000
+        psnr, ssim, cs = invert_and_evaluate(
+            i, all_grads[i], all_X[i], all_Y[i], seed, args.batch_size, dataset, model, params, args.gen_images
         )
-        Z, _ = solver.run(Z)
-        Z = np.array(Z)
-        if args.gen_images:
-            inversion_images(all_X[i], all_Y[i], Z, labels, i)
-        psnr, ssim, cs, cm = evaluate_inversion(all_X[i], all_Y[i], Z, labels, args.dataset)
-        if psnr is not None and ssim is not None and cm is not None:
-            pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}, CS: {cs:.3f}, CM: {cm:.3f}")
-            psnrs.append(psnr)
-            ssims.append(ssim)
-            css.append(cs)
-            cms.append(cm)
-        else:
-            pbar.set_postfix_str("None")
+        pbar.set_postfix_str(f"PSNR: {np.mean(psnr):.3f}, SSIM: {np.mean(ssim):.3f}, CS: {np.mean(cs):.3f}")
+        psnrs.extend(psnr)
+        ssims.extend(ssim)
+        css.extend(cs)
 
-    if args.gen_images:
-        print("-" * 32)
-        print(f"Final accuracy: {final_acc.item()}")
-        print(f"PSNR: {np.mean(psnrs)}")
-        print(f"SSIM: {np.mean(ssims)}")
-        print(f"CS: {np.mean(css)}")
-        print(f"CM (unstandardized): {np.mean(cms)}")
-        print("-" * 32)
-    else:
-        experiment_results = vars(args).copy()
-        del experiment_results['gen_images']
-        del experiment_results['dp']
-        del experiment_results['perturb']
-        del experiment_results['idlg']
-        experiment_results['Final accuracy'] = final_acc.item()
-        experiment_results['PSNR'] = np.mean(psnrs)
-        experiment_results['SSIM'] = np.mean(ssims)
-        experiment_results['CM'] = np.mean(cms)
-        if args.perturb:
-            experiment_results['opt'] = f"perturbed {experiment_results['opt']}"
-        if args.dp is not None:
-            experiment_results['clipping_rate'] = args.dp[0]
-            experiment_results['noise_scale'] = args.dp[1]
-        else:
-            experiment_results['clipping_rate'] = 0
-            experiment_results['noise_scale'] = 0
+    print("Now inverting the final global gradient...")
+    global_psnr, global_ssim, global_cs = invert_and_evaluate(
+        len(clients) + 1,
+        global_grads,
+        np.concatenate(all_X),
+        np.concatenate(all_Y),
+        seed, dataset.classes,
+        dataset,
+        model,
+        params,
+        False
+    )
+
+    # Recording results
+    experiment_results = vars(args).copy()
+    del experiment_results['gen_images']
+    del experiment_results['dp']
+    del experiment_results['perturb']
+    del experiment_results['idlg']
+    experiment_results['Final accuracy'] = final_acc.item()
+    experiment_results['PSNR'] = np.mean(psnrs)
+    experiment_results['SSIM'] = np.mean(ssims)
+    experiment_results['CS'] = np.mean(css)
+    experiment_results['Global PSNR'] = np.mean(global_psnr)
+    experiment_results['Global SSIM'] = np.mean(global_ssim)
+    experiment_results['Global CS'] = np.mean(global_cs)
+    if args.perturb:
+        experiment_results['opt'] = f"perturbed {experiment_results['opt']}"
+    if not args.gen_images:
         df_results = pd.DataFrame(data=experiment_results, index=[0])
         if os.path.exists('results.csv'):
             old_results = pd.read_csv('results.csv')
             df_results = pd.concat((old_results, df_results))
         df_results.to_csv('results.csv', index=False)
     print("Done.")
+
+    print("-" * 32)
+    for k, v in experiment_results.items():
+        print(f"{k}: {v}")
+    print("-" * 32)

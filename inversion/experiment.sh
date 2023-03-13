@@ -17,16 +17,3 @@ for dataset in "mnist" "cifar10" "svhn"; do
         done
     done
 done
-
-
-
-# for dataset in "mnist" "cifar10" "svhn"; do
-#     for model in "resnet"; do
-#         num_clients=10
-#         for opt in "sgd" "adam" "ours"; do
-#             for seed in {0..2}; do
-#                 python main.py -m $model -d $dataset -s $seed -n $num_clients -o $opt -r 750
-#             done
-#         done
-#     done
-# done
