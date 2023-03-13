@@ -333,6 +333,8 @@ if __name__ == "__main__":
     experiment_results['Global CS'] = np.mean(global_cs)
     if args.perturb:
         experiment_results['opt'] = f"perturbed {experiment_results['opt']}"
+    if args.dp:
+        experiment_results['opt'] = f"DP {experiment_results['opt']}"
     if not args.gen_images:
         df_results = pd.DataFrame(data=experiment_results, index=[0])
         if os.path.exists('results.csv'):
