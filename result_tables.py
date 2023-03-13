@@ -82,8 +82,10 @@ if __name__ == "__main__":
         if col not in grouping_col_names:
             if "accuracy" in col.lower() or 'asr' in col.lower() or 'attack success' in col.lower():
                 g_mean[col] = g_mean[col].map("{:.3%}".format) + g_std[col].map(" ({:.3%})".format)
-            elif "psnr" in col.lower() or "ssim" in col.lower() or "cm" in col.lower():
+            elif "psnr" in col.lower() or "ssim" in col.lower():
                 g_mean[col] = g_mean[col].map("{:.3f}".format) + g_std[col].map(" ({:.3f})".format)
+            elif "cm" in col.lower():
+                g_mean[col] = g_mean[col].map("{:.3e}".format) + g_std[col].map(" ({:.3e})".format)
             else:
                 g_mean[col] = g_mean[col].astype(str) + " (" + g_std[col].astype(str) + ")"
     agg_results = g_mean

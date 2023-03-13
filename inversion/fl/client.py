@@ -131,7 +131,7 @@ class AdamClient(Client):
             self.data.get_unperturbed = True
             X, Y, uX = next(self.data)
             params, _ = self.step(params=global_params, state=self.state, X=X, Y=Y)
-            grads =  jaxopt.tree_util.tree_sub(global_params, self.params)
+            grads = jaxopt.tree_util.tree_sub(global_params, self.params)
             self.data.get_unperturbed = False
             return grads, uX, Y
         return super().get_update(global_params)

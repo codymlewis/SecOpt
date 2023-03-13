@@ -144,6 +144,11 @@ def cosine_dist(A: Array, B: Array) -> float:
     return 1 - jnp.mean(jnp.abs(jnp.einsum('br,br -> b', A, B)) / denom)
 
 
+def cosine_sim(A: Array, B: Array) -> float:
+    """Get the cosine disance between two arrays"""
+    return abs((A * B).sum()) / (jnp.linalg.norm(A) * jnp.linalg.norm(B))
+
+
 def total_variation(V: Array) -> float:
     """Get the total variation of a batch of images"""
     return abs(V[:, 1:, :] - V[:, :-1, :]).sum() + abs(V[:, :, 1:] - V[:, :, :-1]).sum()
@@ -184,13 +189,15 @@ def evaluate_inversion(
         zidx = np.array([0])
         xidx = np.array([0])
     if not len(zidx) or not len(xidx):
-        return None, None, None
-    psnrs, ssims = [], []
+        return None, None, None, None
+    psnrs, ssims, css = [], [], []
     for zi, xi in zip(zidx, xidx):
         psnrs.append(skimage.metrics.peak_signal_noise_ratio(Z[zi], X[xi], data_range=1))
         ssims.append(abs(skimage.metrics.structural_similarity(Z[zi], X[xi], win_size=11, channel_axis=2)))
+        css.append(cosine_sim(Z[zi], X[xi]))
     cms = classifier_metric.apply(Z[zidx], X[xidx], dataset_name=dataset_name)
-    return np.mean(psnrs), np.mean(ssims), np.mean(cms)
+    # print(f"{css=}")
+    return np.mean(psnrs), np.mean(ssims), np.max(css), np.mean(cms)
 
 
 def inversion_images(X: ArrayLike, Y: ArrayLike, Z: ArrayLike, labels: ArrayLike, client_id: int):
@@ -264,7 +271,7 @@ if __name__ == "__main__":
     print(f"Final accuracy: {final_acc:.3%}")
 
     all_grads, all_X, all_Y = server.get_updates(params)
-    psnrs, ssims, cms = [], [], []
+    psnrs, ssims, css, cms = [], [], [], []
     print("Now inverting the final gradients...")
     for i in (pbar := trange(len(all_grads))):
         true_grads = all_grads[i]
@@ -287,11 +294,12 @@ if __name__ == "__main__":
         Z = np.array(Z)
         if args.gen_images:
             inversion_images(all_X[i], all_Y[i], Z, labels, i)
-        psnr, ssim, cm = evaluate_inversion(all_X[i], all_Y[i], Z, labels, args.dataset)
+        psnr, ssim, cs, cm = evaluate_inversion(all_X[i], all_Y[i], Z, labels, args.dataset)
         if psnr is not None and ssim is not None and cm is not None:
-            pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}, CM: {cm:.3f}")
+            pbar.set_postfix_str(f"PSNR: {psnr:.3f}, SSIM: {ssim:.3f}, CS: {cs:.3f}, CM: {cm:.3f}")
             psnrs.append(psnr)
             ssims.append(ssim)
+            css.append(cs)
             cms.append(cm)
         else:
             pbar.set_postfix_str("None")
@@ -301,6 +309,7 @@ if __name__ == "__main__":
         print(f"Final accuracy: {final_acc.item()}")
         print(f"PSNR: {np.mean(psnrs)}")
         print(f"SSIM: {np.mean(ssims)}")
+        print(f"CS: {np.mean(css)}")
         print(f"CM (unstandardized): {np.mean(cms)}")
         print("-" * 32)
     else:

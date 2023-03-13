@@ -104,11 +104,12 @@ class Dataset:
 
     def get_iter(
         self,
-        split: str|Iterable[str],
+        split: str | Iterable[str],
         batch_size: Optional[int] = None,
         idx: Optional[Iterable[int]] = None,
         filter_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,
         map_fn: Optional[Callable[[dict[str, Iterable[Any]]], dict[str, Iterable[Any]]]] = None,
+        seed: Optional[int] = None
     ) -> DataIter:
         """
         Generate an iterator out of the dataset.
@@ -121,7 +122,7 @@ class Dataset:
         - map_fn: a function that takes the samples and labels and returns a subset of the samples and labels
         - in_memory: Whether of not the data should remain in the memory
         """
-        rng = np.random.default_rng(self.seed)
+        rng = np.random.default_rng(self.seed if seed is None else seed)
         if filter_fn is not None:
             self.ds = self.ds.filter(filter_fn)
         if map_fn is not None:
@@ -176,5 +177,8 @@ class Dataset:
         rng = np.random.default_rng(self.seed)
         if mapping is not None:
             distribution = mapping(self.ds['train']['Y'], len(batch_sizes), self.classes, rng)
-            return [self.get_iter("train", b, idx=d) for b, d in zip(batch_sizes, distribution)]
-        return [self.get_iter("train", b) for b in batch_sizes]
+            return [
+                self.get_iter("train", b, idx=d, seed=self.seed + i)
+                for i, (b, d) in enumerate(zip(batch_sizes, distribution))
+            ]
+        return [self.get_iter("train", b, seed=self.seed + i) for i, b in enumerate(batch_sizes)]
