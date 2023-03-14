@@ -156,6 +156,8 @@ if __name__ == "__main__":
     parser.add_argument('-i', '--iid', type=float, default=0.5, help="Specify the alpha parameter for the LDA.")
     parser.add_argument('--efficient', action='store_true',
                         help="Run an efficient form of the secure aggregation algorithms")
+    parser.add_argument('-c', '--convergence', action='store_true',
+                        help='Measure the number of rounds for convergence to relatively high accuracy.')
     args = parser.parse_args()
 
     seed = round(args.seed * np.pi) + 500
@@ -189,15 +191,22 @@ if __name__ == "__main__":
         server = agg.server.Server(params, clients, maxiter=args.rounds, seed=seed, efficient=args.efficient)
     state = server.init_state(params)
 
-    for _ in (pbar := trange(server.maxiter)):
+    for r in (pbar := trange(server.maxiter)):
         params, state = server.update(params, state)
         pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
+        if args.convergence:
+            acc = accuracy(model, params, dataset.get_test_iter(args.batch_size))
+            if acc >= 0.85:
+                conv_rounds = r + 1
+                break
     test_data = dataset.get_test_iter(args.batch_size)
     final_acc = accuracy(model, params, test_data)
     print(f"Final accuracy: {final_acc:.3%}")
 
     experiment_results = vars(args).copy()
     experiment_results['Final accuracy'] = final_acc.item()
+    if args.convergence:
+        experiment_results['Rounds for Convergence'] = conv_rounds
     df_results = pd.DataFrame(data=experiment_results, index=[0])
     if os.path.exists('results.csv'):
         old_results = pd.read_csv('results.csv')
