@@ -26,6 +26,10 @@ import models
 PyTree = Any
 
 
+def pmean(x):
+    return np.nan_to_num(np.mean(x))
+
+
 def loss(model: nn.Module) -> Callable[[PyTree, Array, Array], float]:
     """
     A cross-entropy loss function
@@ -300,7 +304,7 @@ if __name__ == "__main__":
         psnr, ssim, cs = invert_and_evaluate(
             i, all_grads[i], all_X[i], all_Y[i], seed, args.batch_size, dataset, model, params, args.gen_images
         )
-        pbar.set_postfix_str(f"PSNR: {np.mean(psnr):.3f}, SSIM: {np.mean(ssim):.3f}, CS: {np.mean(cs):.3f}")
+        pbar.set_postfix_str(f"PSNR: {pmean(psnr):.3f}, SSIM: {pmean(ssim):.3f}, CS: {pmean(cs):.3f}")
         psnrs.extend(psnr)
         ssims.extend(ssim)
         css.extend(cs)
@@ -325,12 +329,12 @@ if __name__ == "__main__":
     del experiment_results['perturb']
     del experiment_results['idlg']
     experiment_results['Final accuracy'] = final_acc.item()
-    experiment_results['PSNR'] = np.mean(psnrs)
-    experiment_results['SSIM'] = np.mean(ssims)
-    experiment_results['CS'] = np.mean(css)
-    experiment_results['Global PSNR'] = np.mean(global_psnr)
-    experiment_results['Global SSIM'] = np.mean(global_ssim)
-    experiment_results['Global CS'] = np.mean(global_cs)
+    experiment_results['PSNR'] = pmean(psnrs)
+    experiment_results['SSIM'] = pmean(ssims)
+    experiment_results['CS'] = pmean(css)
+    experiment_results['Global PSNR'] = pmean(global_psnr)
+    experiment_results['Global SSIM'] = pmean(global_ssim)
+    experiment_results['Global CS'] = pmean(global_cs)
     if args.perturb:
         experiment_results['opt'] = f"perturbed {experiment_results['opt']}"
     if args.dp:

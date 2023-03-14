@@ -9,7 +9,7 @@ for aggregation in "fedavg" "fedadam" "adam" "secagg" "ours" "oursfedadam"; do
 		epochs="1"
 		rounds="3000"
 		for seed in {0..2}; do
-			python main.py -n $clients -m $model -d $dataset -s $seed -a $aggregation -r $rounds -e $epochs --iid $alpha --efficient
+			python main.py -n $clients -m $model -d $dataset -s $seed -a $aggregation -r $rounds -e $epochs --iid $alpha --efficient --convergence
 		done
         done
     done

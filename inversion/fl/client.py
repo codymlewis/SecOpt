@@ -130,10 +130,10 @@ class AdamClient(Client):
         if self.data.perturb_data:
             self.data.get_unperturbed = True
             X, Y, uX = next(self.data)
-            params, _ = self.step(params=global_params, state=self.state, X=X, Y=Y)
-            grads = jaxopt.tree_util.tree_sub(global_params, self.params)
+            _, state = self.step(params=global_params, state=self.state, X=X, Y=Y)
+            m, n = state.internal_state[0].mu, state.internal_state[0].nu
             self.data.get_unperturbed = False
-            return grads, uX, Y
+            return m, tree_add_scalar(n, self.eps), uX, Y
 
         X, Y = next(self.data)
         _, state = self.step(params=global_params, state=self.state, X=X, Y=Y)
