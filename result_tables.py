@@ -41,7 +41,7 @@ def format_final_table(styler):
     columns = styler.columns
     acc_asr_cols = set(
         str(col) for col in columns
-        if 'accuracy' in col.lower() or 'asr' in col.lower() or 'attack success' in col.lower()
+        if 'accuracy' in col.lower() or 'asr' in col.lower() or 'attack success' in col.lower() or "cs" in col.lower()
     )
     other_columns = set(str(col) for col in columns) - acc_asr_cols
     styler = styler.format(formatter=lambda s: s.replace('%', '\\%'), subset=list(acc_asr_cols))
@@ -80,14 +80,15 @@ if __name__ == "__main__":
     g_std = groups.std().reset_index()
     for col in g_mean.columns:
         if col not in grouping_col_names:
-            if "accuracy" in col.lower() or 'asr' in col.lower() or 'attack success' in col.lower():
-                g_mean[col] = g_mean[col].map("{:.3%}".format) + g_std[col].map(" ({:.3%})".format)
-            elif "psnr" in col.lower() or "ssim" in col.lower():
-                g_mean[col] = g_mean[col].map("{:.3f}".format) + g_std[col].map(" ({:.3f})".format)
-            elif "cm" in col.lower():
-                g_mean[col] = g_mean[col].map("{:.3e}".format) + g_std[col].map(" ({:.3e})".format)
-            else:
-                g_mean[col] = g_mean[col].astype(str) + " (" + g_std[col].astype(str) + ")"
+            match col.lower().split():
+                case [*_, "accuracy"] | ["asr"] | ["attack success"] | [*_, "cs"]:
+                    g_mean[col] = g_mean[col].map("{:.3%}".format) + g_std[col].map(" ({:.3%})".format)
+                case [*_, "psnr"] | [*_, "ssim"]:
+                    g_mean[col] = g_mean[col].map("{:.3f}".format) + g_std[col].map(" ({:.3f})".format)
+                case [*_, "cm"]:
+                    g_mean[col] = g_mean[col].map("{:.3e}".format) + g_std[col].map(" ({:.3e})".format)
+                case _:
+                    g_mean[col] = g_mean[col].astype(str) + " (" + g_std[col].astype(str) + ")"
     agg_results = g_mean
     agg_results = agg_results.drop(columns=['batch_size', 'num_clients'])
     agg_results.model = agg_results.model.pipe(format_model_names)
