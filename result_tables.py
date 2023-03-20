@@ -95,16 +95,16 @@ if __name__ == "__main__":
     if 'opt' in agg_results.columns:
         agg_results.opt = agg_results.opt.pipe(format_opt_names)
         cols = agg_results.columns.tolist()
-        agg_results = agg_results[
-            ["opt", "dataset", "model", "Final accuracy"] + list(set(cols) - {"opt", "dataset", "model", "Final accuracy"})
-        ]
+        other_cols = list(set(cols) - {"opt", "dataset", "model", "Final accuracy"})
+        other_cols.sort()
+        agg_results = agg_results[["opt", "dataset", "model", "Final accuracy"] + other_cols]
         agg_results = agg_results.sort_values(["opt", "dataset", "model"])
     if 'aggregation' in agg_results.columns:
         agg_results.aggregation = agg_results.aggregation.pipe(format_aggregation_names)
         cols = agg_results.columns.tolist()
-        agg_results = agg_results[
-            ["aggregation", "dataset", "model"] + list(set(cols) - {"aggregation", "dataset", "model"})
-        ]
+        other_cols = list(set(cols) - {"aggregation", "dataset", "model"})
+        other_cols.sort()
+        agg_results = agg_results[["aggregation", "dataset", "model"] + other_cols]
         agg_results = agg_results.sort_values(["aggregation", "dataset", "model"])
     if args.dp:
         cols = agg_results.columns.tolist()
