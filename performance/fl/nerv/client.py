@@ -47,7 +47,7 @@ class Client:
         - epochs: Number of local epochs of training to perform in each round
         """
         self.id = uid
-        self.solver = jaxopt.OptaxSolver(opt=optax.adam(0.001), fun=loss_fun, maxiter=epochs)
+        self.solver = jaxopt.OptaxSolver(opt=optax.adam(lr), fun=loss_fun, maxiter=epochs)
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
         self.data = data
