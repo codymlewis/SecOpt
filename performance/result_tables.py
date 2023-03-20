@@ -26,7 +26,7 @@ def format_dataset_names(dataset_names):
 
 def format_aggregation_names(agg_names):
     agg_names = agg_names.str.replace("fedavg", "FedAVG")
-    agg_names = agg_names.str.replace("^adam", "FedAVG w/ Adam")
+    agg_names = agg_names.str.replace("^adam", "FedAVG w/ Adam", regex=True)
     agg_names = agg_names.str.replace("oursfedadam", "Ours w/ FedAdam")
     agg_names = agg_names.str.replace("fedadam", "FedAdam")
     agg_names = agg_names.str.replace("secagg", "SecAgg")
@@ -59,8 +59,8 @@ if __name__ == "__main__":
 
     grouping_col_names = list(set(df.columns) & grouping_col_set)
     groups = df.groupby(grouping_col_names)
-    g_mean = groups.mean().reset_index()
-    g_std = groups.std().reset_index()
+    g_mean = groups.mean(numeric_only=True).reset_index()
+    g_std = groups.std(numeric_only=True).reset_index()
 
     if not args.plot:
         for col in g_mean.columns:
