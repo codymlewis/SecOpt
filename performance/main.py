@@ -190,15 +190,17 @@ if __name__ == "__main__":
     else:
         server = agg.server.Server(params, clients, maxiter=args.rounds, seed=seed, efficient=args.efficient)
     state = server.init_state(params)
+    conv_acc = {"cifar10": 0.6, "mnist": 0.85, "svhn": 0.7}[args.dataset]
 
     for r in (pbar := trange(server.maxiter)):
         params, state = server.update(params, state)
-        pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
         if args.convergence:
             acc = accuracy(model, params, dataset.get_test_iter(args.batch_size))
-            if acc >= 0.85:
-                conv_rounds = r + 1
+            pbar.set_postfix_str(f"LOSS: {state.value:.3f}, ACC: {acc:.3%}")
+            if acc >= conv_acc:
                 break
+        else:
+            pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
     test_data = dataset.get_test_iter(args.batch_size)
     final_acc = accuracy(model, params, test_data)
     print(f"Final accuracy: {final_acc:.3%}")
@@ -206,7 +208,7 @@ if __name__ == "__main__":
     experiment_results = vars(args).copy()
     experiment_results['Final accuracy'] = final_acc.item()
     if args.convergence:
-        experiment_results['Rounds for Convergence'] = conv_rounds
+        experiment_results['Rounds for Convergence'] = r + 1
     df_results = pd.DataFrame(data=experiment_results, index=[0])
     if os.path.exists('results.csv'):
         old_results = pd.read_csv('results.csv')
