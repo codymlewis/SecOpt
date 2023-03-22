@@ -171,7 +171,7 @@ if __name__ == "__main__":
         agg.client.Client(
             i,
             params,
-            optax.adam(0.001) if args.aggregation == "adam" else optax.sgd(0.1),
+            optax.adam(0.001) if args.aggregation == "adam" or "ours" in args.aggregation else optax.sgd(0.1),
             loss(model),
             d,
             epochs=args.epochs
@@ -184,7 +184,7 @@ if __name__ == "__main__":
             clients,
             maxiter=args.rounds,
             seed=seed,
-            optimizer=optax.adam(0.0005 if "ours" in args.aggregation else 0.01),
+            optimizer=optax.adam(0.0001 if "ours" in args.aggregation else 0.01),
             efficient=args.efficient
         )
     else:

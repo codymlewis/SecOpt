@@ -38,7 +38,7 @@ class Server:
         seed: Optional[int] = None,
         R: int = 2**8 - 1,
         efficient: bool = False,
-        optimizer: optax.GradientTransformation = optax.sgd(1)
+        optimizer: optax.GradientTransformation = optax.sgd(0.001)
     ):
         """
         Parameters:

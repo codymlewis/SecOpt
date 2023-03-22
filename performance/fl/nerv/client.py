@@ -31,8 +31,7 @@ class Client:
         epochs: int = 1,
         t: int = 2,
         R: int = 2**8 - 1,
-        lr: float = 0.001,
-        eps: float = 1e-4,
+        eps: float = 1e-9,
         b1: float = 0.9,
         b2: float = 0.999,
     ):
@@ -47,7 +46,7 @@ class Client:
         - epochs: Number of local epochs of training to perform in each round
         """
         self.id = uid
-        self.solver = jaxopt.OptaxSolver(opt=optax.adam(lr), fun=loss_fun, maxiter=epochs)
+        self.solver = jaxopt.OptaxSolver(opt=opt, fun=loss_fun, maxiter=epochs)
         self.state = self.solver.init_state(params)
         self.step = jax.jit(self.solver.update)
         self.data = data
@@ -56,9 +55,8 @@ class Client:
         ravelled_params, unraveller = jax.flatten_util.ravel_pytree(params)
         self.params_len = len(ravelled_params)
         self.unraveller = jax.jit(unraveller)
-        self.hardening = hardening.pgd(loss_fun, lr=lr / 100)
+        self.hardening = hardening.pgd(loss_fun, lr=1e-6)
         self.R = R
-        self.lr = lr
         self.eps = eps
         self.b1 = b1
         self.b2 = b2
@@ -90,12 +88,12 @@ class Client:
             )
         del params
         m, v = self.state.internal_state[0].mu, self.state.internal_state[0].nu
-        m = utils.ravel(m) * self.lr
+        m = utils.ravel(m)
         v = utils.ravel(v)
         count = self.state.internal_state[0].count
         m_hat = bias_correction(m, self.b1, count)
         v_hat = bias_correction(v, self.b2, count)
-        return m_hat, v_hat + self.eps**2, self.state
+        return m_hat, v_hat + self.eps, self.state
 
     def setup(self, signing_key, verification_keys):
         self.c = DH.DiffieHellman()

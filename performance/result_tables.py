@@ -92,7 +92,7 @@ if __name__ == "__main__":
         print(agg_results.style.pipe(format_final_table).to_latex(position_float='centering'))
     else:
         data = agg_results[
-            (agg_results.dataset == "CIFAR-10") & (agg_results.iid == 10.0) & (agg_results.model == "CNN1")
+            (agg_results.dataset == "CIFAR-10") & (agg_results.iid == 0.5) & (agg_results.model == "CNN1")
         ]
         fig, ax = plt.subplots()
         for aggregation in data.aggregation.unique():
