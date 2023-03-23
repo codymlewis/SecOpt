@@ -184,7 +184,7 @@ if __name__ == "__main__":
             clients,
             maxiter=args.rounds,
             seed=seed,
-            optimizer=optax.adam(0.0001 if "ours" in args.aggregation else 0.01),
+            optimizer=optax.adam(0.00001 if "ours" in args.aggregation else 0.01),
             efficient=args.efficient
         )
     else:

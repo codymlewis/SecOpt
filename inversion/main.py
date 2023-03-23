@@ -257,6 +257,8 @@ if __name__ == "__main__":
                         help="Use client side DP args: <clipping_rate> <noise_scale>.")
     parser.add_argument('--idlg', action="store_true", default=None, help="Use perform the iDLG attack.")
     parser.add_argument('--gen-images', action="store_true", help="Generate images from the inversion.")
+    parser.add_argument('--converge', action='store_true',
+                        help="Run the experiment until convegence is achieved")
     args = parser.parse_args()
 
     seed = round(args.seed * np.pi) + 500
@@ -287,11 +289,22 @@ if __name__ == "__main__":
     ]
     server = Server(params, clients, maxiter=args.rounds, seed=seed)
     state = server.init_state(params)
+    conv_acc = {
+        "cifar10": {'cnn1': 0.5, 'cnn2': 0.5, 'lenet': 0.35},
+        "mnist": {'cnn1': 0.85, 'cnn2': 0.85, 'lenet': 0.8},
+        "svhn": {'cnn1': 0.8, 'cnn2': 0.8, 'lenet': 0.35}
+    }[args.dataset][args.model]
 
     # Training model
     for _ in (pbar := trange(server.maxiter)):
         params, state = server.update(params, state)
-        pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
+        if args.converge:
+            acc = accuracy(model, params, dataset.get_test_iter(args.batch_size))
+            pbar.set_postfix_str(f"LOSS: {state.value:.3f}, ACC: {acc:.3%}")
+            if acc >= conv_acc:
+                break
+        else:
+            pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
     test_data = dataset.get_test_iter(args.batch_size)
     final_acc = accuracy(model, params, test_data)
     print(f"Final accuracy: {final_acc:.3%}")
@@ -304,10 +317,10 @@ if __name__ == "__main__":
         psnr, ssim, cs = invert_and_evaluate(
             i, all_grads[i], all_X[i], all_Y[i], seed, args.batch_size, dataset, model, params, args.gen_images
         )
-        pbar.set_postfix_str(f"PSNR: {pmean(psnr):.3f}, SSIM: {pmean(ssim):.3f}, CS: {pmean(cs):.3f}")
         psnrs.extend(psnr)
         ssims.extend(ssim)
         css.extend(cs)
+        pbar.set_postfix_str(f"PSNR: {pmean(psnr):.3f}, SSIM: {pmean(ssim):.3f}, CS: {pmean(cs):.3f}")
 
     print("Now inverting the final global gradient...")
     global_psnr, global_ssim, global_cs = invert_and_evaluate(
