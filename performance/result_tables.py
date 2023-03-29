@@ -65,8 +65,10 @@ if __name__ == "__main__":
     if not args.plot:
         for col in g_mean.columns:
             if col not in grouping_col_names:
-                if "accuracy" in col.lower() or 'asr' in col.lower() or 'attack success' in col.lower():
+                if "accuracy" in col.lower() or "asr" in col.lower() or "attack success" in col.lower():
                     g_mean[col] = g_mean[col].map("{:.3%}".format) + g_std[col].map(" ({:.3%})".format)
+                elif "rounds for convergence" in col.lower():
+                    g_mean[col] = g_mean[col].map("{:.3f}".format) + g_std[col].map(" ({:.3f})".format)
                 else:
                     g_mean[col] = g_mean[col].astype(str) + " (" + g_std[col].astype(str) + ")"
     else:
@@ -77,7 +79,7 @@ if __name__ == "__main__":
                 g_mean = g_mean.drop(columns=col)
 
     agg_results = g_mean
-    agg_results = agg_results.drop(columns=['batch_size', 'num_clients'])
+    agg_results = agg_results.drop(columns=['batch_size', 'num_clients', "convergence"])
     agg_results.model = agg_results.model.pipe(format_model_names)
     agg_results.dataset = agg_results.dataset.pipe(format_dataset_names)
     agg_results.aggregation = agg_results.aggregation.pipe(format_aggregation_names)
@@ -87,6 +89,7 @@ if __name__ == "__main__":
         ordered_cols + list(set(cols) - set(ordered_cols))
     ]
     agg_results = agg_results.sort_values(["aggregation", "dataset", "model", 'iid', 'epochs'])
+    # agg_results = agg_results.drop(columns=["iid", "epochs"])
 
     if not args.plot:
         print(agg_results.style.pipe(format_final_table).to_latex(position_float='centering'))
