@@ -1,16 +1,16 @@
 #!/bin/bash
 
-for dataset in "fmnist" "svhn"; do
+for dataset in "mnist" "svhn"; do
 	echo "Generating GradCAMs for $dataset"
 	echo First generating for Adam...
 
-	python main.py -m cnn2 -o adam -d $dataset -n 75 -r 750 --gradcams
+	python main.py -m cnn2 -o adam -d $dataset -n 75 -r 750 --gradcams --converge
 	mkdir adam
 	mv *.png adam/
 
 	echo Next generating for ours...
 
-	python main.py -m cnn2 -o ours -d $dataset -n 75 -r 750 --gradcams
+	python main.py -m cnn2 -o ours -d $dataset -n 75 -r 750 --gradcams --converge
 	mkdir ours
 	mv *.png ours/
 

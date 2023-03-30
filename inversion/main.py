@@ -352,6 +352,7 @@ if __name__ == "__main__":
     del experiment_results['dp']
     del experiment_results['perturb']
     del experiment_results['idlg']
+    del experiment_results['gradcams']
     experiment_results['Final accuracy'] = final_acc.item()
     if not args.gradcams:
         experiment_results['PSNR'] = pmean(psnrs)
