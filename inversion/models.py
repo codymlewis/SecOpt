@@ -1,8 +1,8 @@
-from typing import Callable
 import einops
 import flax.linen as nn
 from jax import Array
 import jax.numpy as jnp
+import fgradcam
 
 
 def load_model(name: str) -> nn.Module:
@@ -51,6 +51,7 @@ class CNN1(nn.Module):
         x = nn.relu(x)
         x = nn.Conv(64, (3, 3))(x)
         x = nn.relu(x)
+        x = fgradcam.observe(self, x)
         x = nn.max_pool(x, (3, 3), strides=(2, 2), padding='SAME')
         x = einops.rearrange(x, "b w h c -> b (w h c)")
         x = nn.Dense(100)(x)
@@ -70,6 +71,7 @@ class CNN2(nn.Module):
         x = nn.Conv(64, (5, 5))(x)
         x = nn.LayerNorm()(x)
         x = nn.relu(x)
+        x = fgradcam.observe(self, x)
         x = nn.max_pool(x, (3, 3), strides=(2, 2), padding='SAME')
         x = einops.rearrange(x, "b w h c -> b (w h c)")
         x = nn.Dense(120)(x)
@@ -81,6 +83,7 @@ class CNN2(nn.Module):
             return x
         x = nn.Dense(10, name="classifier")(x)
         return nn.softmax(x)
+
 
 # ResNetV2
 
@@ -154,6 +157,7 @@ class ResNetV2(nn.Module):
 
         x = nn.LayerNorm(epsilon=1.001e-5)(x)
         x = nn.relu(x)
+        x = fgradcam.observe(self, x)
 
         x = einops.reduce(x, "b h w d -> b d", 'mean')
 

@@ -8,6 +8,7 @@ def add_image(fn, axis):
     axis.imshow(img)
     axis.axis('off')
 
+
 def find(files: list, client_id: str, label: str):
     return [f for f in files if f'{client_id}_Z' in f and f[-5] == label][0]
 
@@ -19,7 +20,7 @@ if __name__ == "__main__":
 
     # fig, axes = plt.subplots(len(ground_truths), 3)
     fig, axes = plt.subplots(5, 3)
-    
+
     for i, gt in enumerate(ground_truths[:5]):
         add_image(f"sgd/{gt}", axes[i, 0])
         client_id = gt[:8]

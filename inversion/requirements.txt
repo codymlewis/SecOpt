@@ -6,3 +6,4 @@ datasets
 tqdm
 numpy
 einops
+git+https://github.com/codymlewis/flax_gradcam.git

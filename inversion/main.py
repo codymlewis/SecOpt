@@ -18,6 +18,7 @@ import jaxopt
 import skimage
 import pandas as pd
 import matplotlib.pyplot as plt
+import fgradcam
 
 import fl
 import models
@@ -257,6 +258,7 @@ if __name__ == "__main__":
                         help="Use client side DP args: <clipping_rate> <noise_scale>.")
     parser.add_argument('--idlg', action="store_true", default=None, help="Use perform the iDLG attack.")
     parser.add_argument('--gen-images', action="store_true", help="Generate images from the inversion.")
+    parser.add_argument('--gradcams', action='store_true', help="Record gradcams of the trained model.")
     parser.add_argument('--converge', action='store_true',
                         help="Run the experiment until convegence is achieved")
     args = parser.parse_args()
@@ -309,31 +311,40 @@ if __name__ == "__main__":
     final_acc = accuracy(model, params, test_data)
     print(f"Final accuracy: {final_acc:.3%}")
 
-    # Inversion of gradients
-    all_grads, global_grads, all_X, all_Y = server.get_updates(params)
-    psnrs, ssims, css = [], [], []
-    print("Now inverting the final client gradients...")
-    for i in (pbar := trange(len(all_grads))):
-        psnr, ssim, cs = invert_and_evaluate(
-            i, all_grads[i], all_X[i], all_Y[i], seed, args.batch_size, dataset, model, params, args.gen_images
-        )
-        psnrs.extend(psnr)
-        ssims.extend(ssim)
-        css.extend(cs)
-        pbar.set_postfix_str(f"PSNR: {pmean(psnr):.3f}, SSIM: {pmean(ssim):.3f}, CS: {pmean(cs):.3f}")
+    if args.gradcams:
+        print("Now creating heatmaps...")
+        X, _ = next(dataset.get_test_iter(25))
+        heatmaps = fgradcam.compute(model, params, X)
+        for i, (x, h) in enumerate(zip(X, heatmaps)):
+            fgradcam.plot(x, h)
+            plt.savefig(f"{i}.png", dpi=320)
+            plt.clf()
+    else:
+        # Inversion of gradients
+        all_grads, global_grads, all_X, all_Y = server.get_updates(params)
+        psnrs, ssims, css = [], [], []
+        print("Now inverting the final client gradients...")
+        for i in (pbar := trange(len(all_grads))):
+            psnr, ssim, cs = invert_and_evaluate(
+                i, all_grads[i], all_X[i], all_Y[i], seed, args.batch_size, dataset, model, params, args.gen_images
+            )
+            psnrs.extend(psnr)
+            ssims.extend(ssim)
+            css.extend(cs)
+            pbar.set_postfix_str(f"PSNR: {pmean(psnr):.3f}, SSIM: {pmean(ssim):.3f}, CS: {pmean(cs):.3f}")
 
-    print("Now inverting the final global gradient...")
-    global_psnr, global_ssim, global_cs = invert_and_evaluate(
-        len(clients) + 1,
-        global_grads,
-        np.concatenate(all_X),
-        np.concatenate(all_Y),
-        seed, dataset.classes,
-        dataset,
-        model,
-        params,
-        False
-    )
+        print("Now inverting the final global gradient...")
+        global_psnr, global_ssim, global_cs = invert_and_evaluate(
+            len(clients) + 1,
+            global_grads,
+            np.concatenate(all_X),
+            np.concatenate(all_Y),
+            seed, dataset.classes,
+            dataset,
+            model,
+            params,
+            False
+        )
 
     # Recording results
     experiment_results = vars(args).copy()
@@ -342,17 +353,18 @@ if __name__ == "__main__":
     del experiment_results['perturb']
     del experiment_results['idlg']
     experiment_results['Final accuracy'] = final_acc.item()
-    experiment_results['PSNR'] = pmean(psnrs)
-    experiment_results['SSIM'] = pmean(ssims)
-    experiment_results['CS'] = pmean(css)
-    experiment_results['Global PSNR'] = pmean(global_psnr)
-    experiment_results['Global SSIM'] = pmean(global_ssim)
-    experiment_results['Global CS'] = pmean(global_cs)
+    if not args.gradcams:
+        experiment_results['PSNR'] = pmean(psnrs)
+        experiment_results['SSIM'] = pmean(ssims)
+        experiment_results['CS'] = pmean(css)
+        experiment_results['Global PSNR'] = pmean(global_psnr)
+        experiment_results['Global SSIM'] = pmean(global_ssim)
+        experiment_results['Global CS'] = pmean(global_cs)
     if args.perturb:
         experiment_results['opt'] = f"perturbed {experiment_results['opt']}"
     if args.dp:
         experiment_results['opt'] = f"DP {experiment_results['opt']}"
-    if not args.gen_images:
+    if not args.gen_images and not args.gradcams:
         df_results = pd.DataFrame(data=experiment_results, index=[0])
         if os.path.exists('results.csv'):
             old_results = pd.read_csv('results.csv')

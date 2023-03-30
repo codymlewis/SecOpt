@@ -95,7 +95,7 @@ class Dataset:
     @property
     def input_init(self) -> NDArray:
         """Get some dummy inputs for initializing a model."""
-        return np.zeros((32,) + self.ds['train'][0]['X'].shape, dtype='float32')
+        return np.zeros((1,) + self.ds['train'][0]['X'].shape, dtype='float32')
 
     @property
     def input_shape(self) -> Tuple[int]:
