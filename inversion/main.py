@@ -292,9 +292,9 @@ if __name__ == "__main__":
     server = Server(params, clients, maxiter=args.rounds, seed=seed)
     state = server.init_state(params)
     conv_acc = {
-        "cifar10": {'cnn1': 0.5, 'cnn2': 0.5, 'lenet': 0.35},
-        "mnist": {'cnn1': 0.85, 'cnn2': 0.85, 'lenet': 0.8},
-        "svhn": {'cnn1': 0.8, 'cnn2': 0.8, 'lenet': 0.35}
+        "cifar10": {'cnn1': 0.5, 'cnn2': 0.5, 'lenet': 0.35, 'softmax': 1.0},
+        "mnist": {'cnn1': 0.85, 'cnn2': 0.85, 'lenet': 0.8, 'softmax': 1.0},
+        "svhn": {'cnn1': 0.8, 'cnn2': 0.8, 'lenet': 0.35, 'softmax': 1.0},
     }[args.dataset][args.model]
 
     # Training model
@@ -318,6 +318,10 @@ if __name__ == "__main__":
         for i, (x, h) in enumerate(zip(X, heatmaps)):
             fgradcam.plot(x, h)
             plt.savefig(f"{i}.png", dpi=320)
+            plt.clf()
+            plt.imshow(x, cmap='gray')
+            plt.axis('off')
+            plt.savefig(f"gt_{i}.png", dpi=320)
             plt.clf()
     else:
         # Inversion of gradients
