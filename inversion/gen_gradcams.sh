@@ -29,6 +29,6 @@ for dataset in "mnist" "svhn"; do
 
 	for opt in "ground_truth" "adam" "ours"; do
 		mv "${opt}_gradcams.pdf" "${dataset}_${opt}_gradcams.pdf"
-		echo "Done. Image saved to ${dataset}_gradcams.pdf"
+		echo "Done. Image saved to ${dataset}_${opt}_gradcams.pdf"
 	done
 done

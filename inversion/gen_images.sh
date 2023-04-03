@@ -18,4 +18,4 @@ python plot.py
 
 rm -r sgd ours
 
-echo Done. Image saved to inversions.pdf
+echo Done. Images saved to *_inversions.pdf
