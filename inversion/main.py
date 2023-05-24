@@ -18,10 +18,10 @@ import jaxopt
 import skimage
 import pandas as pd
 import matplotlib.pyplot as plt
-import fgradcam
 
 import fl
 import models
+import gradcam
 
 
 PyTree = Any
@@ -314,9 +314,9 @@ if __name__ == "__main__":
     if args.gradcams:
         print("Now creating heatmaps...")
         X, _ = next(dataset.get_test_iter(25))
-        heatmaps = fgradcam.compute(model, params, X)
+        heatmaps = gradcam.compute(model, params, X)
         for i, (x, h) in enumerate(zip(X, heatmaps)):
-            fgradcam.plot(x, h)
+            gradcam.plot(x, h)
             plt.savefig(f"{i}.png", dpi=320)
             plt.clf()
             plt.imshow(x, cmap='gray')
