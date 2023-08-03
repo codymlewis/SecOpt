@@ -51,10 +51,13 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Process the results file into a respesentative LaTeX table.")
     parser.add_argument('-e', '--efficient', action='store_true', help='Show only the efficient results')
     parser.add_argument('-p', '--plot', action='store_true', help="Plot the results")
+    parser.add_argument('-r', '--rounds', action='store_true', help="Show the number of rounds to convergence.")
     args = parser.parse_args()
 
     df = pd.read_csv('results.csv').drop(columns=['rounds', 'seed'])
     df = df[df.efficient == args.efficient].drop(columns='efficient')
+    if not args.rounds and "Rounds for Convergence" in df.columns:
+        df = df.drop(columns='Rounds for Convergence')
     grouping_col_set = {'batch_size', 'dataset', 'model', 'num_clients', 'aggregation', 'iid', 'epochs'}
 
     grouping_col_names = list(set(df.columns) & grouping_col_set)
