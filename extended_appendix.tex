@@ -13,12 +13,14 @@
 \usepackage{bm}
 \usepackage{bbm}
 \usepackage{multirow}
-% \usepackage{pdflscape}
+\usepackage{pdflscape}
 \usepackage[caption=false,font=footnotesize,labelfont=sf,textfont=sf]{subfig}
 
 \title{Extended Appendix}
 
 \begin{document}
+
+\maketitle
 
 \section{Further Performance Results}
 
@@ -347,9 +349,9 @@ Unless stated otherwise, we have used the projected gradient descent algorithm \
 
 \section{Samples of Backdoor Data}\label{sec:triggers}
 
-\begin{figure}[ht]
+\begin{figure}[H]
     \centering
-    \includegraphics[width=\columnwidth]{images/backdoor/triggers.pdf}
+    \includegraphics[width=\columnwidth]{images/triggers.pdf}
     \caption{Samples of the backdoor data. First column shows the ground truth, second column shows the full pixel pattern trigger, and the last three columns show each of the thirds of the trigger used in the distributed attack.}
     \label{fig:triggers}
 \end{figure}
@@ -1025,5 +1027,8 @@ This can be proven directly as follows.
     Where \eqref{eq:secoptinequality} holds true since there will always be one or more clients in an operational system.
 \end{proof}
 
+
+\bibliographystyle{IEEEtran}
+\bibliography{IEEEabrv,main}
 
 \end{document}
