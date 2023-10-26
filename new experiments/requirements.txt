@@ -6,3 +6,4 @@ orbax
 datasets
 einops
 scikit-learn
+jaxopt
