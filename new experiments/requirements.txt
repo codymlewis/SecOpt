@@ -1,0 +1,8 @@
+matplotlib
+numpy
+flax
+optax
+orbax
+datasets
+einops
+scikit-learn

@@ -7,3 +7,5 @@ results.csv
 *.log
 *.bbl
 *.blg
+.venv
+checkpoints/
