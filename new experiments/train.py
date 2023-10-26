@@ -20,7 +20,9 @@ if __name__ == "__main__":
     parser.add_argument('-e', '--epochs', type=int, default=3, help="Number of epochs to train for.")
     parser.add_argument('-b', '--batch-size', type=int, default=8, help="Training and evaluation batch size.")
     parser.add_argument('-d', '--dataset', type=str, default="fmnist", help="Dataset to train on.")
-    parser.add_argument('-m', '--model', type=str, default="LeNet_300_100", help="Neural network model to train")
+    parser.add_argument('-m', '--model', type=str, default="LeNet_300_100", help="Neural network model to train.")
+    parser.add_argument('-o', '--optimiser', type=str, default="adam", help="Optimiser to use for training.")
+    parser.add_argument('-lr', '--learning-rate', type=float, default=0.001, help="Learning rate to use for training.")
     args = parser.parse_args()
 
     dataset = getattr(load_datasets, args.dataset)()
@@ -28,7 +30,7 @@ if __name__ == "__main__":
     state = train_state.TrainState.create(
         apply_fn=model.apply,
         params=model.init(jax.random.PRNGKey(args.seed), dataset['train']['X'][:1]),
-        tx=optax.adam(0.001),
+        tx=getattr(optax, args.optimiser)(args.learning_rate),
     )
 
     ckpt_mgr = ocp.CheckpointManager(
