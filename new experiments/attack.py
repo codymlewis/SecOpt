@@ -10,11 +10,22 @@ import optax
 import jaxopt
 from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
+import sklearn.metrics as skm
+import skimage.metrics as skim
 
 import models
 import load_datasets
 import common
 import optimisers
+
+
+def idlg_loss(state, update_step, true_grads, labels):
+    def _apply(Z):
+        _, new_state = update_step(state, Z, labels)
+        new_grads = jax.tree_util.tree_map(lambda a, b: a - b, state.params, new_state.params)
+        norm_tree = jax.tree_util.tree_map(lambda a, b: jnp.sum((a - b)**2), new_grads, true_grads)
+        return jnp.sqrt(jax.tree_util.tree_reduce(lambda a, b: a + b, norm_tree))
+    return _apply
 
 
 def cosine_dist(A, B):
@@ -26,7 +37,10 @@ def total_variation(V):
     return abs(V[:, 1:, :] - V[:, :-1, :]).sum() + abs(V[:, :, 1:] - V[:, :, :-1]).sum()
 
 
-def atloss(state, true_reps, lamb_tv=1e-4):
+def representation_loss(state, true_reps, lamb_tv=1e-4):
+    """
+    Representation inversion attack proposed in https://arxiv.org/abs/2202.10546
+    """
     def _apply(Z):
         dist = cosine_dist(state.apply_fn(state.params, Z, representation=True), true_reps)
         return dist + lamb_tv * total_variation(Z)
@@ -58,10 +72,19 @@ def plot_image_array(images, labels):
     plt.show()
 
 
+def measure_leakage(true_X, Z, true_Y, labels):
+    metrics = {"ssim": [], "psnr": []}
+    for tx in true_X:
+        for z in Z:
+            metrics['ssim'].append(skim.structural_similarity(tx, z, channel_axis=2, data_range=1.0))
+            metrics['psnr'].append(skim.peak_signal_noise_ratio(tx, z, data_range=1.0))
+    return {"ssim": max(metrics['ssim']), "psnr": max(metrics['psnr'])}
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train neural network models for inversion attacks.")
     parser.add_argument('-f', '--folder', type=str, required=True, help="Folder containing the checkpoints of the model")
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for random number generation operations.")
+    parser.add_argument('-a', '--attack', type=str, default="representation", help="The type of gradient inversion attack to perform.")
     args = parser.parse_args()
 
     train_args = {a.split('=')[0]: a.split('=')[1] for a in args.folder[args.folder.rfind('/') + 1:].split('-')}
@@ -83,7 +106,6 @@ if __name__ == "__main__":
         options=None,
     )
     state = ckpt_mgr.restore(int(train_args["epochs"]) - 1, state, restore_kwargs={'restore_args': orbax_utils.restore_args_from_target(state, mesh=None)})
-    # print(f"Accuracy: {common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=batch_size):.3%}")
 
     idx = np.random.default_rng(args.seed).choice(len(dataset['train']['Y']), batch_size)
     update_step = common.pgd_update_step if train_args["pgd"] else common.update_step
@@ -91,22 +113,28 @@ if __name__ == "__main__":
 
     true_grads = jax.tree_util.tree_map(lambda a, b: a - b, state.params, new_state.params)
     labels = jnp.argsort(jnp.min(true_grads['params']['classifier']['kernel'], axis=0))[:batch_size]
-    true_reps = true_grads['params']['classifier']['kernel'].T[labels]
 
-    solver = jaxopt.OptaxSolver(atloss(new_state, true_reps), optax.adam(0.01), pre_update=lambda X, s: (jnp.clip(X, 0., 1.), s))
+    if args.attack == "representation":
+        true_reps = true_grads['params']['classifier']['kernel'].T[labels]
+        solver = jaxopt.OptaxSolver(representation_loss(state, true_reps), optax.adam(0.01), pre_update=lambda X, s: ((X - X.min()) / (X.max() - X.min()), s))
+    else:
+        solver = jaxopt.LBFGS(idlg_loss(state, update_step, true_grads, labels))
+
     Z = jax.random.normal(jax.random.PRNGKey(args.seed), shape=(batch_size,) + dataset.input_shape) * 0.2 + 0.5
-    # Z = jax.random.uniform(jax.random.PRNGKey(args.seed), minval=0.0, maxval=1.0, shape=(batch_size,) + dataset.input_shape)
     attack_state = solver.init_state(Z)
     trainer = jax.jit(solver.update)
     for _ in (pbar := trange(1000)):
         Z, attack_state = trainer(Z, attack_state)
         pbar.set_postfix_str(f"LOSS: {attack_state.value:.5f}")
+    Z = (Z - Z.min()) / (Z.max() - Z.min())
 
     # Plot the results
     if isinstance(Z, tuple):
         Z, labels = Z
         labels = jnp.argmax(labels, axis=-1)
+    Z, labels = np.array(Z), np.array(labels)
     print("Ground truth")
     plot_image_array(dataset['train']['X'][idx], dataset['train']['Y'][idx])
     print("Attack images")
-    plot_image_array(np.array(Z), np.array(labels))
+    plot_image_array(Z, labels)
+    print(measure_leakage(dataset['train']['X'][idx], Z, dataset['train']['Y'][idx], labels))

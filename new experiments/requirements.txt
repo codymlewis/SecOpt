@@ -6,5 +6,6 @@ orbax
 datasets
 einops
 scikit-learn
+scikit-image
 jaxopt
 chex
