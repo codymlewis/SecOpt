@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import models
 import load_datasets
 import common
+import optimisers
 
 
 def cosine_dist(A, B):
@@ -33,9 +34,11 @@ def atloss(state, true_reps, lamb_tv=1e-4):
 
 
 def plot_image_array(images, labels):
+    # Order the data according to label values
     idx = np.argsort(labels)
     images = images[idx]
     labels = labels[idx]
+    # Plot a grid of images
     batch_size = len(labels)
     if batch_size > 1:
         if batch_size > 3:
@@ -61,32 +64,33 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for random number generation operations.")
     args = parser.parse_args()
 
-    print(args.folder[args.folder.rfind('/') + 1:].split('-'))
     train_args = {a.split('=')[0]: a.split('=')[1] for a in args.folder[args.folder.rfind('/') + 1:].split('-')}
     batch_size = int(train_args['batch_size'])
     dataset = getattr(load_datasets, train_args['dataset'])()
     model = getattr(models, train_args["model"])(dataset.nclasses)
+    try:
+        optimiser = getattr(optimisers, train_args["optimiser"])
+    except AttributeError:
+        optimiser = getattr(optax, train_args["optimiser"])
     state = train_state.TrainState.create(
         apply_fn=model.apply,
         params=model.init(jax.random.PRNGKey(0), dataset['train']['X'][:1]),
-        tx=getattr(optax, train_args["optimiser"])(float(train_args["learning_rate"])),
+        tx=optimiser(float(train_args["learning_rate"])),
     )
-
     ckpt_mgr = ocp.CheckpointManager(
         args.folder,
         ocp.Checkpointer(ocp.PyTreeCheckpointHandler()),
         options=None,
     )
     state = ckpt_mgr.restore(int(train_args["epochs"]) - 1, state, restore_kwargs={'restore_args': orbax_utils.restore_args_from_target(state, mesh=None)})
-    print(f"Accuracy: {common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=batch_size):.3%}")
+    # print(f"Accuracy: {common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=batch_size):.3%}")
 
     idx = np.random.default_rng(args.seed).choice(len(dataset['train']['Y']), batch_size)
-    loss, new_state = common.update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
+    update_step = common.pgd_update_step if train_args["pgd"] else common.update_step
+    loss, new_state = update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
 
     true_grads = jax.tree_util.tree_map(lambda a, b: a - b, state.params, new_state.params)
-    labels = jnp.argsort(
-        jnp.min(true_grads['params']['classifier']['kernel'], axis=0)
-    )[:batch_size]
+    labels = jnp.argsort(jnp.min(true_grads['params']['classifier']['kernel'], axis=0))[:batch_size]
     true_reps = true_grads['params']['classifier']['kernel'].T[labels]
 
     solver = jaxopt.OptaxSolver(atloss(new_state, true_reps), optax.adam(0.01), pre_update=lambda X, s: (jnp.clip(X, 0., 1.), s))

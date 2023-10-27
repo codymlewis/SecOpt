@@ -15,6 +15,24 @@ def update_step(state, X, Y):
     return loss, state
 
 
+@jax.jit
+def pgd_update_step(state, X, Y, pgd_lr=0.001, epsilon=1/32, pgd_steps=10):
+    def loss_fn(params, dX):
+        logits = jnp.clip(state.apply_fn(params, dX), 1e-15, 1 - 1e-15)
+        one_hot = jax.nn.one_hot(Y, logits.shape[-1])
+        return -jnp.mean(jnp.einsum("bl,bl -> b", one_hot, jnp.log(logits)))
+
+    X_nat = X
+    for _ in range(pgd_steps):
+        Xgrads = jax.grad(loss_fn, argnums=1)(state.params, X)
+        X = X + pgd_lr * jnp.sign(Xgrads)
+        X = jnp.clip(X, X_nat - epsilon, X_nat + epsilon)
+        X = jnp.clip(X, 0, 1)
+
+    loss, grads = jax.value_and_grad(loss_fn)(state.params, X)
+    state = state.apply_gradients(grads=grads)
+    return loss, state
+
 
 def accuracy(state, X, Y, batch_size=1000):
     """
