@@ -25,6 +25,7 @@ if __name__ == "__main__":
     parser.add_argument('-lr', '--learning-rate', type=float, default=0.001, help="Learning rate to use for training.")
     args = parser.parse_args()
 
+    print(f"Training with {vars(args)}")
     dataset = getattr(load_datasets, args.dataset)()
     model = getattr(models, args.model)(len(np.unique(dataset['train']['Y'])))
     state = train_state.TrainState.create(
@@ -34,7 +35,7 @@ if __name__ == "__main__":
     )
 
     ckpt_mgr = ocp.CheckpointManager(
-        "checkpoints/{}".format('_'.join([f'{k}={v}' for k, v in vars(args).items()])),
+        "checkpoints/{}".format('-'.join([f'{k}={v}' for k, v in vars(args).items()])),
         ocp.Checkpointer(ocp.PyTreeCheckpointHandler()),
         options=ocp.CheckpointManagerOptions(create=True, keep_period=1),
     )
@@ -50,4 +51,3 @@ if __name__ == "__main__":
         pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
     print(f"Final accuracy: {common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size):.3%}")
     ckpt_mgr.close()
-
