@@ -9,3 +9,4 @@ scikit-learn
 scikit-image
 jaxopt
 chex
+pandas
