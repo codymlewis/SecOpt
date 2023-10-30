@@ -80,6 +80,27 @@ def cifar100():
     return Dataset(data_dict, input_shape, nclasses)
 
 
+def svhn():
+    ds = datasets.load_dataset("svhn", "cropped_digits")
+    ds.pop("extra")
+    ds = ds.map(
+        lambda e: {
+            'X': np.array(e['image'], dtype=np.float32) / 255,
+            'Y': e['label']
+        },
+        remove_columns=['image', 'label']
+    )
+    features = ds['train'].features
+    input_shape = (32, 32, 3)
+    features['X'] = datasets.Array3D(shape=input_shape, dtype='float32')
+    ds['train'] = ds['train'].cast(features)
+    ds['test'] = ds['test'].cast(features)
+    ds.set_format('numpy')
+    data_dict = hfdataset_to_dict(ds)
+    nclasses = len(set(np.unique(ds['train']['Y'])) & set(np.unique(ds['test']['Y'])))
+    return Dataset(data_dict, input_shape, nclasses)
+
+
 def tinyimagenet():
     ds = datasets.load_dataset("zh-plus/tiny-imagenet")
     ds = ds.map(
