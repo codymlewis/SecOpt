@@ -23,16 +23,16 @@ class LeNet(nn.Module):
     @nn.compact
     def __call__(self, x, representation=False):
         x = nn.Conv(6, (5, 5), padding="VALID")(x)
-        x = nn.sigmoid(x)
+        x = nn.relu(x)
         x = nn.avg_pool(x, (2, 2), (2, 2))
         x = nn.Conv(16, (5, 5), padding="SAME")(x)
-        x = nn.sigmoid(x)
+        x = nn.relu(x)
         x = nn.avg_pool(x, (2, 2), (2, 2))
         x = einops.rearrange(x, "b h w c -> b (h w c)")
         x = nn.Dense(120)(x)
-        x = nn.sigmoid(x)
+        x = nn.relu(x)
         x = nn.Dense(84)(x)
-        x = nn.sigmoid(x)
+        x = nn.relu(x)
         if representation:
             return x
         x = nn.Dense(self.classes, name="classifier")(x)
