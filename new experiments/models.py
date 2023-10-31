@@ -17,6 +17,26 @@ class Small(nn.Module):
         return x
 
 
+class CNN(nn.Module):
+    "A simple CNN model"
+    classes: int = 10
+
+    @nn.compact
+    def __call__(self, x, representation=False):
+        x = nn.Conv(48, (3, 3), padding="SAME")(x)
+        x = nn.relu(x)
+        x = nn.Conv(32, (3, 3), padding="SAME")(x)
+        x = nn.relu(x)
+        x = nn.Conv(16, (3, 3), padding="SAME")(x)
+        x = nn.relu(x)
+        x = einops.rearrange(x, "b h w c -> b (h w c)")
+        if representation:
+            return x
+        x = nn.Dense(self.classes, name="classifier")(x)
+        x = nn.softmax(x)
+        return x
+
+
 class LeNet(nn.Module):
     classes: int = 10
 

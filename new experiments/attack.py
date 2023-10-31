@@ -95,17 +95,19 @@ def perform_attack(state, dataset, attack, train_args, seed=42):
 
     if attack == "representation":
         true_reps = true_grads['params']['classifier']['kernel'].T[labels]
-        solver = jaxopt.OptaxSolver(representation_loss(state, true_reps), optax.adam(0.01), pre_update=lambda X, s: ((X - X.min()) / (X.max() - X.min()), s))
+        solver = jaxopt.OptaxSolver(representation_loss(state, true_reps), optax.lion(0.01))#, pre_update=lambda X, s: ((X - X.min()) / (X.max() - X.min()), s))
     else:
         solver = jaxopt.LBFGS(idlg_loss(state, update_step, true_grads, labels))
 
-    Z = jax.random.normal(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape) * 0.2 + 0.5
+    # Z = jax.random.normal(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape) * 0.2 + 0.5
+    Z = jax.random.uniform(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape)
     attack_state = solver.init_state(Z)
     trainer = jax.jit(solver.update)
     for _ in (pbar := trange(1000)):
         Z, attack_state = trainer(Z, attack_state)
         pbar.set_postfix_str(f"LOSS: {attack_state.value:.5f}")
-    Z = (Z - Z.min()) / (Z.max() - Z.min())
+    # Z = (Z - Z.min()) / (Z.max() - Z.min())
+    Z = jnp.clip(Z, 0, 1)
     if isinstance(Z, tuple):
         Z, labels = Z
         labels = np.argmax(labels, axis=-1)
@@ -139,8 +141,10 @@ if __name__ == "__main__":
         options=None,
     )
     state = ckpt_mgr.restore(int(train_args["epochs"]) - 1, state, restore_kwargs={'restore_args': orbax_utils.restore_args_from_target(state, mesh=None)})
+    # state = train_state.TrainState.create(apply_fn=model.apply, params=state.params, tx=optax.sgd(0.001))
 
     all_results = {k: [v for _ in range(args.runs)] for k, v in train_args.items() if k in ["dataset", "model", "optimiser", "pgd"]}
+    all_results['attack'] = [args.attack for _ in range(args.runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
     for i in range(0, args.runs):
         seed = round(np.e**i + np.e**(i - 1) * np.cos(i * np.pi / 2)) % 2**31
@@ -152,13 +156,17 @@ if __name__ == "__main__":
         all_results["seed"].append(seed)
         print(f"Attack performance: {results}")
     if args.plot:
-        os.makedirs("attack_images", exist_ok=True)
+        os.makedirs("plots", exist_ok=True)
         print("Ground truth")
-        plot_image_array(dataset['train']['X'][idx], dataset['train']['Y'][idx], "attack_images/ground_truth.png")
+        plot_image_array(dataset['train']['X'][idx], dataset['train']['Y'][idx], f"plots/{train_args['dataset']}_ground_truth.png")
         print("Attack images")
         plot_image_array(
             Z,
             labels,
-            f"attack_images/{args.attack}_{train_args['model']}_{train_args['dataset']}_{train_args['optimiser']}{'_pgd' if train_args['pgd'] == 'True' else ''}.png"
+            f"plots/{args.attack}_{train_args['model']}_{train_args['dataset']}_{train_args['optimiser']}{'_pgd' if train_args['pgd'] == 'True' else ''}.png"
         )
-    pd.DataFrame.from_dict(all_results).to_csv("results.csv", mode='a', header=not os.path.exists("results.csv"), index=False)
+    full_results = pd.DataFrame.from_dict(all_results)
+    print("Summary results:")
+    print(full_results.describe())
+    full_results.to_csv("results.csv", mode='a', header=not os.path.exists("results.csv"), index=False)
+    print("Added results to results.csv")
