@@ -108,9 +108,6 @@ def perform_attack(state, dataset, attack, train_args, seed=42):
         pbar.set_postfix_str(f"LOSS: {attack_state.value:.5f}")
     # Z = (Z - Z.min()) / (Z.max() - Z.min())
     Z = jnp.clip(Z, 0, 1)
-    if isinstance(Z, tuple):
-        Z, labels = Z
-        labels = np.argmax(labels, axis=-1)
     Z, labels = np.array(Z), np.array(labels)
     return Z, labels, idx
 
@@ -125,6 +122,8 @@ if __name__ == "__main__":
 
     train_args = {a.split('=')[0]: a.split('=')[1] for a in args.folder[args.folder.rfind('/') + 1:].split('-')}
     dataset = getattr(load_datasets, train_args['dataset'])()
+    if train_args['perturb'] == "True":
+        dataset.perturb(np.random.default_rng(int(train_args['seed']) + 1))
     model = getattr(models, train_args["model"])(dataset.nclasses)
     try:
         optimiser = getattr(optimisers, train_args["optimiser"])

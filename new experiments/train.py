@@ -26,10 +26,14 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--optimiser', type=str, default="sgd", help="Optimiser to use for training.")
     parser.add_argument('-lr', '--learning-rate', type=float, default=0.001, help="Learning rate to use for training.")
     parser.add_argument('-p', '--pgd', action="store_true", help="Perform projected gradient descent hardening.")
+    parser.add_argument('--perturb', action="store_true", help="Perturb the training data.")
     args = parser.parse_args()
 
     print(f"Training with {vars(args)}")
+    rng = np.random.default_rng(args.seed)
     dataset = getattr(load_datasets, args.dataset)()
+    if args.perturb:
+        dataset.perturb(rng)
     model = getattr(models, args.model)(len(np.unique(dataset['train']['Y'])))
     try:
         optimiser = getattr(optimisers, args.optimiser)
@@ -50,13 +54,14 @@ if __name__ == "__main__":
     )
     update_step = common.pgd_update_step if args.pgd else common.update_step
 
-    rng = np.random.default_rng(args.seed)
     for e in (pbar := trange(args.epochs)):
         idxs = np.array_split(rng.permutation(len(dataset['train']['Y'])), math.ceil(len(dataset['train']['Y']) / args.batch_size))
         loss_sum = 0.0
         for idx in idxs:
             loss, state = update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
             loss_sum += loss
+        if args.perturb:
+            dataset.perturb(rng)
         ckpt_mgr.save(e, state, save_kwargs={'save_args': orbax_utils.save_args_from_target(state)})
         pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
     print(f"Final accuracy: {common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size):.3%}")

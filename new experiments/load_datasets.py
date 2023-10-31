@@ -1,6 +1,8 @@
 import datasets
 import numpy as np
 import einops
+from skimage import transform
+import matplotlib.pyplot as plt
 
 
 class Dataset:
@@ -14,6 +16,17 @@ class Dataset:
     
     def __setitem__(self, i, v):
         self.data[i] = v
+
+    def perturb(self, rng):
+        "Make random changes to the training dataset."
+        train_data = self.data['train']
+        nsamples = len(train_data['Y'])
+        flip_idx = rng.choice(nsamples, nsamples // 4, replace=False)
+        train_data['X'][flip_idx] = np.flip(train_data['X'][flip_idx], 0)
+        flip_idx = rng.choice(nsamples, nsamples // 4, replace=False)
+        train_data['X'][flip_idx] = np.flip(train_data['X'][flip_idx], 1)
+        rot_idx = rng.choice(nsamples, nsamples // 2, replace=False)
+        train_data['X'][rot_idx] = np.array([transform.rotate(x, rng.uniform(-30, 30)) for x in train_data['X'][rot_idx]])
 
 
 def hfdataset_to_dict(hfdataset):

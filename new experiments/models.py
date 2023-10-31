@@ -18,7 +18,6 @@ class Small(nn.Module):
 
 
 class CNN(nn.Module):
-    "A simple CNN model"
     classes: int = 10
 
     @nn.compact
@@ -218,6 +217,32 @@ class LayerScale(nn.Module):
 
 
 # ResNetV2
+class ResNetV2(nn.Module):
+    @nn.compact
+    def __call__(self, x, representation=False):
+        x = jnp.pad(x, ((0, 0), (3, 3), (3, 3), (0, 0)))
+        x = nn.Conv(64, (7, 7), strides=(2, 2), padding="VALID", use_bias=True, name="conv1_conv")(x)
+
+        x = jnp.pad(x, ((0, 0), (1, 1), (1, 1), (0, 0)))
+        x = nn.max_pool(x, (3, 3), strides=(2, 2))
+
+        x = Stack2(64, 3, name="conv2")(x)
+        x = Stack2(128, 4, name="conv3")(x)
+        x = Stack2(256, 6, name="conv4")(x)
+        x = Stack2(512, 3, strides1=(1, 1), name="conv5")(x)
+
+        x = nn.LayerNorm(epsilon=1.001e-5)(x)
+        x = nn.relu(x)
+        x = gradcam.observe(self, x)
+
+        x = einops.reduce(x, "b h w d -> b d", 'mean')
+
+        if representation:
+            return x
+        x = nn.Dense(10, name="classifier")(x)
+        return nn.softmax(x)
+
+
 class Block2(nn.Module):
     filters: int
     kernel: (int, int) = (3, 3)
@@ -270,32 +295,6 @@ class Stack2(nn.Module):
             x = Block2(self.filters, name=f"{self.name}_block{i}")(x)
         x = Block2(self.filters, strides=self.strides1, name=f"{self.name}_block{self.blocks}")(x)
         return x
-
-
-class ResNetV2(nn.Module):
-    @nn.compact
-    def __call__(self, x, representation=False):
-        x = jnp.pad(x, ((0, 0), (3, 3), (3, 3), (0, 0)))
-        x = nn.Conv(64, (7, 7), strides=(2, 2), padding="VALID", use_bias=True, name="conv1_conv")(x)
-
-        x = jnp.pad(x, ((0, 0), (1, 1), (1, 1), (0, 0)))
-        x = nn.max_pool(x, (3, 3), strides=(2, 2))
-
-        x = Stack2(64, 3, name="conv2")(x)
-        x = Stack2(128, 4, name="conv3")(x)
-        x = Stack2(256, 6, name="conv4")(x)
-        x = Stack2(512, 3, strides1=(1, 1), name="conv5")(x)
-
-        x = nn.LayerNorm(epsilon=1.001e-5)(x)
-        x = nn.relu(x)
-        x = gradcam.observe(self, x)
-
-        x = einops.reduce(x, "b h w d -> b d", 'mean')
-
-        if representation:
-            return x
-        x = nn.Dense(10, name="classifier")(x)
-        return nn.softmax(x)
 
 
 # if __name__ == "__main__":
