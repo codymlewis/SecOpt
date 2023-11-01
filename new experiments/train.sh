@@ -16,7 +16,7 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
 
         for model in ${models[@]}; do
             for other_flags in "" "--pgd" "--perturb" "--pgd --perturb"; do
-                python train.py --epochs 10 --dataset $dataset --model $model --batch-size $batch_size $other_flags
+                python train.py --epochs 10 --dataset $dataset --optimiser $optimiser --model $model --batch-size $batch_size $other_flags
             done
         done
     done
