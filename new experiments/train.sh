@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
     for optimiser in "sgd" "nerv"; do
         if [[ $dataset == "fmnist" ]]; then
@@ -14,7 +15,7 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
         fi
 
         for model in ${models[@]}; do
-            for other_flags in "" "--pgd" "--perturb" "--pdg --perturb"; do
+            for other_flags in "" "--pgd" "--perturb" "--pgd --perturb"; do
                 python train.py --epochs 10 --dataset $dataset --model $model --batch-size $batch_size $other_flags
             done
         done
