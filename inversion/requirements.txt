@@ -1,9 +1,0 @@
-scikit-image
-optax
-jaxopt
-flax
-datasets
-tqdm
-numpy
-einops
-scipy
