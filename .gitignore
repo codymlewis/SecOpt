@@ -10,3 +10,4 @@ results.csv
 .venv
 checkpoints/
 *.png
+poetry.lock

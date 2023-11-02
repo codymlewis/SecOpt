@@ -135,8 +135,8 @@ def perform_attack(state, dataset, attack, train_args, seed=42):
         case _:
             raise NotImplementedError(f"Attack {attack} is not implemented.")
 
-    Z = jax.random.normal(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape) * 0.2 + 0.5
-    # Z = jax.random.uniform(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape)
+    # Z = jax.random.normal(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape) * 0.2 + 0.5
+    Z = jax.random.uniform(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape)
     attack_state = solver.init_state(Z)
     trainer = jax.jit(solver.update)
     for _ in (pbar := trange(1000)):
