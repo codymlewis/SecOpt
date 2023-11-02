@@ -123,7 +123,6 @@ def tinyimagenet():
         },
         remove_columns=['image', 'label']
     )
-    ds.rename_column('valid', 'test')
     features = ds['train'].features
     input_shape = (64, 64, 3)
     features['X'] = datasets.Array3D(shape=input_shape, dtype='float32')
@@ -131,5 +130,7 @@ def tinyimagenet():
     ds['valid'] = ds['valid'].cast(features)
     ds.set_format('numpy')
     data_dict = hfdataset_to_dict(ds)
-    nclasses = len(set(np.unique(ds['train']['Y'])) & set(np.unique(ds['test']['Y'])))
+    data_dict['test'] = data_dict['valid']
+    del data_dict['valid']
+    nclasses = len(set(np.unique(data_dict['train']['Y'])) & set(np.unique(data_dict['test']['Y'])))
     return Dataset(data_dict, input_shape, nclasses)
