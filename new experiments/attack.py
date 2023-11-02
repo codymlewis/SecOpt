@@ -22,12 +22,41 @@ import optimisers
 
 
 def idlg_loss(state, update_step, true_grads, labels):
+    "https://arxiv.org/abs/2001.02610"
     def _apply(Z):
         _, new_state = update_step(state, Z, labels)
         new_grads = jax.tree_util.tree_map(lambda a, b: a - b, state.params, new_state.params)
         norm_tree = jax.tree_util.tree_map(lambda a, b: jnp.sum((a - b)**2), new_grads, true_grads)
         return jnp.sqrt(jax.tree_util.tree_reduce(lambda a, b: a + b, norm_tree))
     return _apply
+
+
+def cpl_loss(state, update_step, true_grads, labels, alpha=0.5):
+    "https://link.springer.com/chapter/10.1007/978-3-030-58951-6_27"
+    def _apply(Z):
+        _, new_state = update_step(state, Z, labels)
+        new_grads = jax.tree_util.tree_map(lambda a, b: a - b, state.params, new_state.params)
+        norm_tree = jax.tree_util.tree_map(lambda a, b: jnp.sum((a - b)**2), new_grads, true_grads)
+
+        logits = jnp.clip(state.apply_fn(state.params, Z), 1e-15, 1 - 1e-15)
+        one_hot = jax.nn.one_hot(labels, logits.shape[-1])
+        y_pred_dist = jnp.linalg.norm(logits - one_hot)
+        return jnp.sqrt(jax.tree_util.tree_reduce(lambda a, b: a + b, norm_tree)) + alpha * y_pred_dist
+    return _apply
+
+
+def reg_idlg_loss(state, update_step, true_grads, labels, alpha=0.5, lamb_tv=1e-6):
+    "iDLG attack with regularisation"
+    def _apply(Z):
+        _, new_state = update_step(state, Z, labels)
+        new_grads = jax.tree_util.tree_map(lambda a, b: a - b, state.params, new_state.params)
+        norm_tree = jax.tree_util.tree_map(lambda a, b: jnp.sum((a - b)**2), new_grads, true_grads)
+
+        logits = jnp.clip(state.apply_fn(state.params, Z), 1e-15, 1 - 1e-15)
+        one_hot = jax.nn.one_hot(labels, logits.shape[-1])
+        return jnp.sqrt(jax.tree_util.tree_reduce(lambda a, b: a + b, norm_tree)) + alpha * (cosine_dist(logits, one_hot) + lamb_tv * total_variation(Z))
+    return _apply
+
 
 
 def cosine_dist(A, B):
@@ -93,14 +122,21 @@ def perform_attack(state, dataset, attack, train_args, seed=42):
     true_grads = jax.tree_util.tree_map(lambda a, b: a - b, state.params, new_state.params)
     labels = jnp.argsort(jnp.min(true_grads['params']['classifier']['kernel'], axis=0))[:batch_size]
 
-    if attack == "representation":
-        true_reps = true_grads['params']['classifier']['kernel'].T[labels]
-        solver = jaxopt.OptaxSolver(representation_loss(state, true_reps), optax.lion(0.01))#, pre_update=lambda X, s: ((X - X.min()) / (X.max() - X.min()), s))
-    else:
-        solver = jaxopt.LBFGS(idlg_loss(state, update_step, true_grads, labels))
+    match attack:
+        case "representation":
+            true_reps = true_grads['params']['classifier']['kernel'].T[labels]
+            solver = jaxopt.OptaxSolver(representation_loss(state, true_reps), optax.lion(0.01))#, pre_update=lambda X, s: ((X - X.min()) / (X.max() - X.min()), s))
+        case "cpl":
+            solver = jaxopt.LBFGS(cpl_loss(state, update_step, true_grads, labels))
+        case "idlg":
+            solver = jaxopt.LBFGS(idlg_loss(state, update_step, true_grads, labels))
+        case "reg_idlg":
+            solver = jaxopt.LBFGS(reg_idlg_loss(state, update_step, true_grads, labels))
+        case _:
+            raise NotImplementedError(f"Attack {attack} is not implemented.")
 
-    # Z = jax.random.normal(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape) * 0.2 + 0.5
-    Z = jax.random.uniform(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape)
+    Z = jax.random.normal(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape) * 0.2 + 0.5
+    # Z = jax.random.uniform(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape)
     attack_state = solver.init_state(Z)
     trainer = jax.jit(solver.update)
     for _ in (pbar := trange(1000)):
@@ -139,7 +175,11 @@ if __name__ == "__main__":
         ocp.Checkpointer(ocp.PyTreeCheckpointHandler()),
         options=None,
     )
-    state = ckpt_mgr.restore(int(train_args["epochs"]) - 1, state, restore_kwargs={'restore_args': orbax_utils.restore_args_from_target(state, mesh=None)})
+    state = ckpt_mgr.restore(
+        int(train_args["epochs"]) - 1 if args.attack == "representation" else 0,
+        state,
+        restore_kwargs={'restore_args': orbax_utils.restore_args_from_target(state, mesh=None)}
+    )
     # state = train_state.TrainState.create(apply_fn=model.apply, params=state.params, tx=optax.sgd(0.001))
 
     all_results = {k: [v for _ in range(args.runs)] for k, v in train_args.items() if k in ["dataset", "model", "optimiser", "pgd"]}

@@ -34,7 +34,8 @@ def clip(clip_threshold: float = 1.0) -> optax.GradientTransformation:
 
     def update_fn(updates, state, params=None):
         del params
-        norm = jnp.sqrt(jax.tree_util.tree_reduce(lambda *G: sum(jnp.sum(g**2) for g in G), updates))
+        squared_grads = jax.tree_util.tree_map(lambda g: jnp.sum(g**2), updates)
+        norm = jnp.sqrt(jax.tree_util.tree_reduce(lambda G, g: G + g, squared_grads))
         updates = jax.tree_util.tree_map(lambda g: g / jnp.maximum(1, norm / clip_threshold), updates)
         return updates, state
     
