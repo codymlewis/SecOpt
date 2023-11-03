@@ -64,23 +64,25 @@ class DenseNet121(nn.Module):
     classes: int
 
     @nn.compact
-    def __call__(self, x, train=True):
+    def __call__(self, x, representation=False):
         x = jnp.pad(x, ((0, 0), (3, 3), (3, 3), (0, 0)))
         x = nn.Conv(64, (7, 7), (2, 2), padding='VALID', use_bias=False, name="conv1/conv")(x)
         x = nn.LayerNorm(epsilon=1.001e-5, use_bias=False, name="conv1/ln")(x)
         x = nn.relu(x)
         x = jnp.pad(x, ((0, 0), (1, 1), (1, 1), (0, 0)))
         x = nn.max_pool(x, (3, 3), (2, 2))
-        x = DenseBlock(6, name="conv2")(x, train)
-        x = TransitionBlock(0.5, name="pool2", )(x, train)
-        x = DenseBlock(12, name="conv3")(x, train)
-        x = TransitionBlock(0.5, name="pool3", )(x, train)
-        x = DenseBlock(24, name="conv4")(x, train)
-        x = TransitionBlock(0.5, name="pool4", )(x, train)
-        x = DenseBlock(16, name="conv5")(x, train)
+        x = DenseBlock(6, name="conv2")(x)
+        x = TransitionBlock(0.5, name="pool2", )(x)
+        x = DenseBlock(12, name="conv3")(x)
+        x = TransitionBlock(0.5, name="pool3", )(x)
+        x = DenseBlock(24, name="conv4")(x)
+        x = TransitionBlock(0.5, name="pool4", )(x)
+        x = DenseBlock(16, name="conv5")(x)
         x = nn.LayerNorm(epsilon=1.001e-5, use_bias=False, name="ln")(x)
         x = nn.relu(x)
         x = einops.reduce(x, "b w h d -> b d", "mean")  # Global average pooling
+        if representation:
+            return x
         x = nn.Dense(self.classes, name="classifier")(x)
         x = nn.softmax(x)
         return x
@@ -91,7 +93,7 @@ class ConvBlock(nn.Module):
     name: str
 
     @nn.compact
-    def __call__(self, x, train=True):
+    def __call__(self, x):
         x1 = nn.LayerNorm(epsilon=1.001e-5, use_bias=False, name=self.name + '_0_ln')(x)
         x1 = nn.relu(x1)
         x1 = nn.Conv(4 * self.growth_rate, (1, 1), padding='VALID', use_bias=False, name=self.name + '_1_conv')(x1)
@@ -107,7 +109,7 @@ class TransitionBlock(nn.Module):
     name: str
 
     @nn.compact
-    def __call__(self, x, train=True):
+    def __call__(self, x):
         x = nn.LayerNorm(epsilon=1.001e-5, use_bias=False, name=self.name + '_ln')(x)
         x = nn.relu(x)
         x = nn.Conv(int(x.shape[3] * self.reduction), (1, 1), padding='VALID', use_bias=False, name=self.name + '_conv')(x)
@@ -120,9 +122,9 @@ class DenseBlock(nn.Module):
     name: str
 
     @nn.compact
-    def __call__(self, x, train=True):
+    def __call__(self, x):
         for i in range(self.blocks):
-            x = ConvBlock(32, name=f"{self.name}_block{i + 1}")(x, train)
+            x = ConvBlock(32, name=f"{self.name}_block{i + 1}")(x)
         return x
 
 
@@ -131,7 +133,7 @@ class ConvNeXt(nn.Module):
     classes: int
 
     @nn.compact
-    def __call__(self, x):
+    def __call__(self, x, representation=False):
         depths = [3, 3, 27, 3]
         projection_dims = [128, 256, 512, 1024]
         # Stem block.
@@ -162,6 +164,8 @@ class ConvNeXt(nn.Module):
                 )(x)
 
         x = einops.reduce(x, 'b h w c -> b c', 'mean')
+        if representation:
+            return x
         x = nn.LayerNorm(epsilon=1e-6, name="convnext_base_head_layernorm")(x)
         x = nn.Dense(self.classes, name="classifier")(x)
         x = nn.softmax(x)
@@ -233,7 +237,6 @@ class ResNetV2(nn.Module):
 
         x = nn.LayerNorm(epsilon=1.001e-5)(x)
         x = nn.relu(x)
-        x = gradcam.observe(self, x)
 
         x = einops.reduce(x, "b h w d -> b d", 'mean')
 

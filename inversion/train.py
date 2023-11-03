@@ -34,7 +34,7 @@ if __name__ == "__main__":
     dataset = getattr(load_datasets, args.dataset)()
     if args.perturb:
         dataset.perturb(rng)
-    model = getattr(models, args.model)(len(np.unique(dataset['train']['Y'])))
+    model = getattr(models, args.model)(dataset.nclasses)
     try:
         optimiser = getattr(optimisers, args.optimiser)
     except AttributeError:
