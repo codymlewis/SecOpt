@@ -1,3 +1,4 @@
+import argparse
 import math
 import os
 from functools import partial
@@ -5,13 +6,12 @@ import shutil
 
 import numpy as np
 import jax
-import jax.numpy as jnp
 import flax.linen as nn
 from flax.training import train_state, orbax_utils
 import einops
 import optax
 import orbax.checkpoint as ocp
-from tqdm import tqdm, trange
+from tqdm import trange
 import pandas as pd
 
 import load_datasets
@@ -30,15 +30,25 @@ class CNN(nn.Module):
     def __call__(self, x, representation=False):
         activation_fn = getattr(nn, self.activation)
         if self.pooling == "none":
-            pool_fn = lambda x: x
+            def identity(x):
+                return x
+
+            pool_fn = identity
         else:
             pool_window = (2, 2) if self.pool_size == "small" else (4, 4)
             pool_fn = partial(getattr(nn, self.pooling), window_shape=pool_window, strides=pool_window)
-        normalisation_fn = lambda: lambda x: x if self.normalisation == "none" else getattr(nn, self.normalisation)
+        if self.normalisation == "none":
+            def Identity():
+                def _apply(x):
+                    return x
+                return _apply
+
+            normalisation_fn = Identity
+        else:
+            normalisation_fn = getattr(nn, self.normalisation)
 
         x = nn.Conv(48, (3, 3), padding="SAME")(x)
         x = normalisation_fn()(x)
-        # x = nn.LayerNorm()(x)
         x = activation_fn(x)
         x = pool_fn(x)
         x = nn.Conv(32, (3, 3), padding="SAME")(x)
@@ -58,11 +68,20 @@ class CNN(nn.Module):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+            description="Ablation study for the impact of the model structure on gradient inversion.")
+    parser.add_argument('-a', '--activation', type=str, default="relu", help="Activation function.")
+    parser.add_argument('-p', '--pooling', type=str, default="none", help="Type of pooling layers to apply.")
+    parser.add_argument('-ps', '--pool-size', type=str, default="small",
+                        help="Specify a window size for the pooling layers. [small or large]")
+    parser.add_argument('-n', '--normalisation', type=str, default="none", help="Type of normalisation layers to apply.")
+    args = parser.parse_args()
+
     seed = 56
     batch_size = 8
-    train_epochs = 1
-    attack_runs = 10
-    net_config = {"activation": "sigmoid", "pooling": "max_pool", "pool_size": "small", "normalisation": "none"}
+    train_epochs = 5
+    attack_runs = 100
+    net_config = vars(args)
 
     rng = np.random.default_rng(seed)
     dataset = load_datasets.cifar10()
@@ -88,12 +107,13 @@ if __name__ == "__main__":
             loss_sum += loss
         ckpt_mgr.save(e, state, save_kwargs={'save_args': orbax_utils.save_args_from_target(state)})
         pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
-    print(f"Final accuracy: {common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=batch_size):.3%}")
+    final_accuracy = common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=batch_size)
+    print(f"Final accuracy: {final_accuracy:.3%}")
     ckpt_mgr.close()
     print(f"Checkpoints were saved to {checkpoint_folder}")
 
-
     all_results = {k: [v for _ in range(attack_runs)] for k, v in net_config.items()}
+    all_results["accuracy"] = [final_accuracy for _ in range(attack_runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
     for i in range(0, attack_runs):
         attack_seed = round(np.e**i + np.e**(i - 1) * np.cos(i * np.pi / 2)) % 2**31
@@ -110,7 +130,7 @@ if __name__ == "__main__":
             all_results[k].append(v)
         all_results["seed"].append(attack_seed)
         print(f"Attack performance: {results}")
-    
+
     df = pd.DataFrame(all_results)
     print("Summary of the results")
     print(df.describe())
