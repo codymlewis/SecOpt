@@ -87,7 +87,8 @@ def plot_image_array(images, labels, filename):
     batch_size = len(labels)
     if batch_size > 1:
         if batch_size > 3:
-            nrows, ncols = round(math.sqrt(batch_size)), round(math.sqrt(batch_size))
+            nrows = math.floor(math.sqrt(batch_size))
+            ncols = batch_size // nrows
         else:
             nrows, ncols = 1, batch_size
         fig, axes = plt.subplots(nrows, ncols)
@@ -113,7 +114,7 @@ def measure_leakage(true_X, Z, true_Y, labels):
     return {"ssim": max(metrics['ssim']), "psnr": max(metrics['psnr'])}
 
 
-def perform_attack(state, dataset, attack, train_args, seed=42):
+def perform_attack(state, dataset, attack, train_args, seed=42, espatience=100, esdelta=1e-4):
     batch_size = int(train_args['batch_size'])
     idx = np.random.default_rng(seed).choice(len(dataset['train']['Y']), batch_size)
     update_step = common.pgd_update_step if train_args["pgd"] else common.update_step
@@ -125,7 +126,7 @@ def perform_attack(state, dataset, attack, train_args, seed=42):
     match attack:
         case "representation":
             true_reps = true_grads['params']['classifier']['kernel'].T[labels]
-            solver = jaxopt.OptaxSolver(representation_loss(state, true_reps), optax.lion(0.01))#, pre_update=lambda X, s: ((X - X.min()) / (X.max() - X.min()), s))
+            solver = jaxopt.OptaxSolver(representation_loss(state, true_reps), optax.lion(0.01))
         case "cpl":
             solver = jaxopt.LBFGS(cpl_loss(state, update_step, true_grads, labels))
         case "idlg":
@@ -139,13 +140,29 @@ def perform_attack(state, dataset, attack, train_args, seed=42):
     Z = jax.random.uniform(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape)
     attack_state = solver.init_state(Z)
     trainer = jax.jit(solver.update)
-    for _ in (pbar := trange(1000)):
+    early_stop = np.array([False for _ in range(espatience)])
+    prev_loss = 0.0
+    for s in (pbar := trange(1000)):
         Z, attack_state = trainer(Z, attack_state)
         pbar.set_postfix_str(f"LOSS: {attack_state.value:.5f}")
+        early_stop[s % len(early_stop)] = abs(prev_loss - attack_state.value) < esdelta
+        prev_loss = attack_state.value
+        if early_stop.all():
+            tqdm.write(f"Stopping early with loss {attack_state.value} at step {s}")
+            break
     # Z = (Z - Z.min()) / (Z.max() - Z.min())
     Z = jnp.clip(Z, 0, 1)
     Z, labels = np.array(Z), np.array(labels)
     return Z, labels, idx
+
+
+def tune_brightness(Z, ground_truth):
+    "Tune the brightness of the recreated images with ground truth"
+    Z *= ground_truth.std() / Z.std()
+    Z += ground_truth.mean() - Z.mean()
+    Z = np.clip(Z, 0, 1)
+    return Z
+
 
 
 if __name__ == "__main__":
@@ -190,6 +207,12 @@ if __name__ == "__main__":
         print(f"Performing the attack with {seed=}")
         Z, labels, idx = perform_attack(state, dataset, args.attack, train_args, seed)
         results = measure_leakage(dataset['train']['X'][idx], Z, dataset['train']['Y'][idx], labels)
+        tuned_Z = tune_brightness(Z.copy(), dataset['train']['X'][idx])
+        tuned_results = measure_leakage(dataset['train']['X'][idx], tuned_Z, dataset['train']['Y'][idx], labels)
+        if np.all([tuned_results[k] > results[k] for k in results.keys()]):
+            print("Tuned brightness got better results, so using that")
+            Z = tuned_Z
+            results = tuned_results
         for k, v in results.items():
             all_results[k].append(v)
         all_results["seed"].append(seed)

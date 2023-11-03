@@ -1,7 +1,7 @@
 __pycache__/
 tags
 Session.vim
-results.csv
+*.csv
 *.variables
 *.aux
 *.log
