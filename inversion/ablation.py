@@ -82,6 +82,7 @@ if __name__ == "__main__":
     train_epochs = 5
     attack_runs = 100
     net_config = vars(args)
+    print(f"Running ablation with {vars(args)}")
 
     rng = np.random.default_rng(seed)
     dataset = load_datasets.cifar10()
