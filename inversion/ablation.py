@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
     seed = 56
     batch_size = 8
-    train_epochs = 5
+    train_epochs = 10
     attack_runs = 100
     net_config = vars(args)
     print(f"Running ablation with {vars(args)}")
@@ -117,8 +117,8 @@ if __name__ == "__main__":
     all_results["accuracy"] = [final_accuracy for _ in range(attack_runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
     for i in range(0, attack_runs):
-        attack_seed = round(np.e**i + np.e**(i - 1) * np.cos(i * np.pi / 2)) % 2**31
-        print(f"Performing the attack with {attack_seed=}")
+        attack_seed = round(i**2 + i * np.cos(i * np.pi / 4)) % 2**31
+        print(f"Performing the attack with {attack_seed=}, {i=}")
         Z, labels, idx = attack.perform_attack(state, dataset, "representation", {"batch_size": batch_size, "pgd": False}, attack_seed)
         results = attack.measure_leakage(dataset['train']['X'][idx], Z, dataset['train']['Y'][idx], labels)
         tuned_Z = attack.tune_brightness(Z.copy(), dataset['train']['X'][idx])
