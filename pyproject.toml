@@ -36,6 +36,17 @@ optional = true
 [tool.poetry.group.nvidia.dependencies]
 jaxlib = { extras = ["cuda12_pip"], version = "0.4.19" }
 
+
+[[tool.poetry.source]]
+name = "jax[cuda12_pip]"
+url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
+priority = "primary"
+
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
