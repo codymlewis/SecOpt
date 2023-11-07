@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-for activation in "relu" "elu" "sigmoid" "leaky_relu" "sigmoid" "tanh"; do
+for activation in "relu" "elu" "sigmoid" "leaky_relu" "tanh"; do
 	for pooling in "none" "max_pool" "avg_pool"; do
 		if [[ $pooling != "none" ]]; then
 			extra_flags=("--pool-size small" "--pool-size large")
