@@ -93,25 +93,31 @@ if __name__ == "__main__":
         tx=optax.sgd(0.001),
     )
     checkpoint_folder = "checkpoints/{}".format('-'.join([f'{k}={v}' for k, v in net_config.items()]))
-    shutil.rmtree(checkpoint_folder, ignore_errors=True)
+    # shutil.rmtree(checkpoint_folder, ignore_errors=True)
     ckpt_mgr = ocp.CheckpointManager(
         checkpoint_folder,
         ocp.Checkpointer(ocp.PyTreeCheckpointHandler()),
         options=ocp.CheckpointManagerOptions(create=True, keep_period=1),
     )
 
-    for e in (pbar := trange(train_epochs)):
-        idxs = np.array_split(rng.permutation(len(dataset['train']['Y'])), math.ceil(len(dataset['train']['Y']) / batch_size))
-        loss_sum = 0.0
-        for idx in idxs:
-            loss, state = common.update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
-            loss_sum += loss
-        ckpt_mgr.save(e, state, save_kwargs={'save_args': orbax_utils.save_args_from_target(state)})
-        pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
+    if os.path.exists(checkpoint_folder):
+        state = ckpt_mgr.restore(
+            train_epochs - 1, state, restore_kwargs={'restore_args': orbax_utils.restore_args_from_target(state, mesh=None)}
+        )
+        print(f"Checkpoint loaded from {checkpoint_folder}")
+    else:
+        for e in (pbar := trange(train_epochs)):
+            idxs = np.array_split(rng.permutation(len(dataset['train']['Y'])), math.ceil(len(dataset['train']['Y']) / batch_size))
+            loss_sum = 0.0
+            for idx in idxs:
+                loss, state = common.update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
+                loss_sum += loss
+            ckpt_mgr.save(e, state, save_kwargs={'save_args': orbax_utils.save_args_from_target(state)})
+            pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
+        print(f"Checkpoints were saved to {checkpoint_folder}")
+    ckpt_mgr.close()
     final_accuracy = common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=batch_size)
     print(f"Final accuracy: {final_accuracy:.3%}")
-    ckpt_mgr.close()
-    print(f"Checkpoints were saved to {checkpoint_folder}")
 
     all_results = {k: [v for _ in range(attack_runs)] for k, v in net_config.items()}
     all_results["accuracy"] = [final_accuracy for _ in range(attack_runs)]

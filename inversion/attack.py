@@ -11,9 +11,9 @@ import optax
 import jaxopt
 from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
-import sklearn.metrics as skm
 import skimage.metrics as skim
 import pandas as pd
+import einops
 
 import models
 import load_datasets
@@ -54,9 +54,9 @@ def reg_idlg_loss(state, update_step, true_grads, labels, alpha=0.5, lamb_tv=1e-
 
         logits = jnp.clip(state.apply_fn(state.params, Z), 1e-15, 1 - 1e-15)
         one_hot = jax.nn.one_hot(labels, logits.shape[-1])
-        return jnp.sqrt(jax.tree_util.tree_reduce(lambda a, b: a + b, norm_tree)) + alpha * (cosine_dist(logits, one_hot) + lamb_tv * total_variation(Z))
+        return jnp.sqrt(jax.tree_util.tree_reduce(lambda a, b: a + b, norm_tree)) + \
+            alpha * (cosine_dist(logits, one_hot) + lamb_tv * total_variation(Z))
     return _apply
-
 
 
 def cosine_dist(A, B):
@@ -158,11 +158,12 @@ def perform_attack(state, dataset, attack, train_args, seed=42, espatience=100, 
 
 def tune_brightness(Z, ground_truth):
     "Tune the brightness of the recreated images with ground truth"
-    Z *= ground_truth.std() / Z.std()
-    Z += ground_truth.mean() - Z.mean()
+    # Z *= ground_truth.std() / Z.std()
+    Z *= einops.reduce(ground_truth, 'b h w c -> c', np.std) / einops.reduce(Z, 'b h w c -> c', np.std)
+    # Z += ground_truth.mean() - Z.mean()
+    Z += einops.reduce(ground_truth, 'b h w c -> c', np.mean) + einops.reduce(Z, 'b h w c -> c', np.mean)
     Z = np.clip(Z, 0, 1)
     return Z
-
 
 
 if __name__ == "__main__":
@@ -170,7 +171,8 @@ if __name__ == "__main__":
     parser.add_argument('-f', '--folder', type=str, required=True, help="Folder containing the checkpoints of the model")
     parser.add_argument('-r', '--runs', type=int, default=1, help="Number of runs of the attack to perform.")
     parser.add_argument('-p', '--plot', action="store_true", help="Whether to plot the final results.")
-    parser.add_argument('-a', '--attack', type=str, default="representation", help="The type of gradient inversion attack to perform.")
+    parser.add_argument('-a', '--attack', type=str, default="representation",
+                        help="The type of gradient inversion attack to perform.")
     args = parser.parse_args()
 
     train_args = {a.split('=')[0]: a.split('=')[1] for a in args.folder[args.folder.rfind('/') + 1:].split('-')}
@@ -199,7 +201,9 @@ if __name__ == "__main__":
     )
     # state = train_state.TrainState.create(apply_fn=model.apply, params=state.params, tx=optax.sgd(0.001))
 
-    all_results = {k: [v for _ in range(args.runs)] for k, v in train_args.items() if k in ["dataset", "model", "optimiser", "pgd"]}
+    all_results = {
+        k: [v for _ in range(args.runs)] for k, v in train_args.items() if k in ["dataset", "model", "optimiser", "pgd"]
+    }
     all_results['attack'] = [args.attack for _ in range(args.runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
     for i in range(0, args.runs):
@@ -220,12 +224,20 @@ if __name__ == "__main__":
     if args.plot:
         os.makedirs("plots", exist_ok=True)
         print("Ground truth")
-        plot_image_array(dataset['train']['X'][idx], dataset['train']['Y'][idx], f"plots/{train_args['dataset']}_ground_truth.png")
+        plot_image_array(
+            dataset['train']['X'][idx], dataset['train']['Y'][idx], f"plots/{train_args['dataset']}_ground_truth.png"
+        )
         print("Attack images")
         plot_image_array(
             Z,
             labels,
-            f"plots/{args.attack}_{train_args['model']}_{train_args['dataset']}_{train_args['optimiser']}{'_pgd' if train_args['pgd'] == 'True' else ''}.png"
+            "plots/{}_{}_{}_{}{}.png".format(
+                args.attack,
+                train_args['model'],
+                train_args['dataset'],
+                train_args['optimiser'],
+                '_pgd' if train_args['pgd'] == 'True' else ''
+            )
         )
     full_results = pd.DataFrame.from_dict(all_results)
     print("Summary results:")
