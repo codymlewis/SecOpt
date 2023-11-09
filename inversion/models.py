@@ -1,4 +1,3 @@
-import jax
 import jax.numpy as jnp
 import flax.linen as nn
 import einops
@@ -222,6 +221,8 @@ class LayerScale(nn.Module):
 
 # ResNetV2
 class ResNetV2(nn.Module):
+    classes: int = 10
+
     @nn.compact
     def __call__(self, x, representation=False):
         x = jnp.pad(x, ((0, 0), (3, 3), (3, 3), (0, 0)))
@@ -242,7 +243,7 @@ class ResNetV2(nn.Module):
 
         if representation:
             return x
-        x = nn.Dense(10, name="classifier")(x)
+        x = nn.Dense(self.classes, name="classifier")(x)
         return nn.softmax(x)
 
 
