@@ -62,8 +62,8 @@ if __name__ == "__main__":
             loss_sum += loss
         if args.perturb:
             dataset.perturb(rng)
-        ckpt_mgr.save(e, state, save_kwargs={'save_args': orbax_utils.save_args_from_target(state)})
         pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
+    ckpt_mgr.save(e, state, save_kwargs={'save_args': orbax_utils.save_args_from_target(state)})
     print(f"Final accuracy: {common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size):.3%}")
     ckpt_mgr.close()
     print(f"Checkpoints were saved to {checkpoint_folder}")

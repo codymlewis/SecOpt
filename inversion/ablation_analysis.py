@@ -28,7 +28,7 @@ def analysis_results(df, **kwargs):
         exp_consts = kwargs.copy()
         for v in ev:
             exp_consts.update(v)
-        filtered_results = limited_query(df, **exp_consts)
+        filtered_results = limited_query(df, attack=args.attack, **exp_consts)
         if len(filtered_results) > 0:
             results.append(filtered_results)
             logging.info(f"Summary statistics for: {ev}")
@@ -54,6 +54,7 @@ def unique_not_none(X):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Analyse the results from the ablation experiments.")
+    parser.add_argument("-a", "--attack", type=str, default="representation", help="The attack data to analyse.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Whether to print all information.")
     parser.add_argument("-p", "--plot", action="store_true", help="Create a plot of the results.")
     args = parser.parse_args()
@@ -62,7 +63,7 @@ if __name__ == "__main__":
         level=logging.INFO if args.verbose else logging.WARNING
     )
 
-    df = pd.read_csv("ablation_results.csv")
+    df = pd.read_csv("ablation_results.csv").dropna()
     print(f"Pearson correlation between the accuracy and attack SSIM: {sps.pearsonr(df.accuracy, df.ssim)}")
     print(f"Pearson correlation between the accuracy and attack PSNR: {sps.pearsonr(df.accuracy, df.psnr)}")
     print(f"Pearson correlation between the attack SSIM and attack PSNR: {sps.pearsonr(df.ssim, df.psnr)}")
