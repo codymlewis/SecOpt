@@ -11,7 +11,9 @@ for activation in "relu" "elu" "sigmoid" "leaky_relu" "tanh"; do
 		
 		for extra_flag in "${extra_flags[@]}"; do
 			for normalisation in "none" "LayerNorm"; do
-				python ablation.py -a $activation -p $pooling $extra_flag -n $normalisation
+				for attack in "representation" "idlg" "reg_idlg"; do
+					python ablation.py -a $activation -p $pooling $extra_flag -n $normalisation --attack $attack
+				done
 			done
 		done
 	done
