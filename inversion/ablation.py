@@ -34,7 +34,7 @@ class CNN(nn.Module):
 
             pool_fn = identity
         else:
-            pool_window = (2, 2) if self.pool_size == "small" else (4, 4)
+            pool_window = (2, 2) if self.pool_size == "small" else (3, 3)
             pool_fn = partial(getattr(nn, self.pooling), window_shape=pool_window, strides=pool_window)
         if self.normalisation == "none":
             def Identity():
