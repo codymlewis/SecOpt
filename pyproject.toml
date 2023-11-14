@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "nerv"
+name = "secadam"
 version = "0.1.0"
 description = ""
 authors = ["Cody Lewis <hello@codymlewis.com>"]
@@ -32,23 +32,6 @@ jedi = ">=0.19.1"
 flake8 = ">=6.1.0"
 python-lsp-server = ">=1.8.0"
 yapf = ">=0.40.1"
-
-[tool.poetry.group.nvidia]
-optional = true
-
-[tool.poetry.group.nvidia.dependencies]
-jaxlib = { extras = ["cuda12_pip"], version = "0.4.19" }
-
-
-[[tool.poetry.source]]
-name = "jax[cuda12_pip]"
-url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
-priority = "primary"
-
-
-[[tool.poetry.source]]
-name = "PyPI"
-priority = "primary"
 
 [build-system]
 requires = ["poetry-core"]
