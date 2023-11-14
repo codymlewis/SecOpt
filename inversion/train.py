@@ -1,19 +1,15 @@
 import argparse
 import math
 import shutil
-import matplotlib.pyplot as plt
 import numpy as np
 import jax
 from flax.training import train_state, orbax_utils
-import optax
 import orbax.checkpoint as ocp
-import einops
 from tqdm import trange
 
 import load_datasets
 import models
 import common
-import optimisers
 
 
 if __name__ == "__main__":
@@ -35,14 +31,10 @@ if __name__ == "__main__":
     if args.perturb:
         dataset.perturb(rng)
     model = getattr(models, args.model)(dataset.nclasses)
-    try:
-        optimiser = getattr(optimisers, args.optimiser)
-    except AttributeError:
-        optimiser = getattr(optax, args.optimiser)
     state = train_state.TrainState.create(
         apply_fn=model.apply,
         params=model.init(jax.random.PRNGKey(args.seed), dataset['train']['X'][:1]),
-        tx=optimiser(args.learning_rate),
+        tx=common.find_optimiser(args.optimiser)(args.learning_rate),
     )
 
     checkpoint_folder = "checkpoints/{}".format('-'.join([f'{k}={v}' for k, v in vars(args).items()]))
@@ -55,7 +47,9 @@ if __name__ == "__main__":
     update_step = common.pgd_update_step if args.pgd else common.update_step
 
     for e in (pbar := trange(args.epochs)):
-        idxs = np.array_split(rng.permutation(len(dataset['train']['Y'])), math.ceil(len(dataset['train']['Y']) / args.batch_size))
+        idxs = np.array_split(
+            rng.permutation(len(dataset['train']['Y'])), math.ceil(len(dataset['train']['Y']) / args.batch_size)
+        )
         loss_sum = 0.0
         for idx in idxs:
             loss, state = update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
@@ -64,6 +58,8 @@ if __name__ == "__main__":
             dataset.perturb(rng)
         pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
     ckpt_mgr.save(e, state, save_kwargs={'save_args': orbax_utils.save_args_from_target(state)})
-    print(f"Final accuracy: {common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size):.3%}")
+    print("Final accuracy: {:.3%}".format(
+        common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size)
+    ))
     ckpt_mgr.close()
     print(f"Checkpoints were saved to {checkpoint_folder}")

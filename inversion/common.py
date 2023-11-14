@@ -1,6 +1,9 @@
 import jax
 import jax.numpy as jnp
 from sklearn import metrics
+import optax
+
+import optimisers
 
 
 @jax.jit
@@ -55,3 +58,10 @@ def accuracy(state, X, Y, batch_size=1000):
         preds.append(_apply(X[i:i_end]))
         Ys.append(Y[i:i_end])
     return metrics.accuracy_score(jnp.concatenate(Ys), jnp.concatenate(preds))
+
+
+def find_optimiser(opt_name):
+    try:
+        return getattr(optimisers, opt_name)
+    except AttributeError:
+        return getattr(optax, opt_name)

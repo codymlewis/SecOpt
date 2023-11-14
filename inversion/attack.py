@@ -18,7 +18,6 @@ import einops
 import models
 import load_datasets
 import common
-import optimisers
 
 
 def idlg_loss(state, update_step, true_grads, labels):
@@ -173,6 +172,8 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--plot', action="store_true", help="Whether to plot the final results.")
     parser.add_argument('-a', '--attack', type=str, default="representation",
                         help="The type of gradient inversion attack to perform.")
+    parser.add_argument('-b', '--batch-size', type=int, default=0, help="Override the batch size used in training.")
+    parser.add_argument('-o', '--optimiser', type=str, default=None, help="Override the optimiser used in training.")
     args = parser.parse_args()
 
     train_args = {a.split('=')[0]: a.split('=')[1] for a in args.folder[args.folder.rfind('/') + 1:].split('-')}
@@ -180,14 +181,10 @@ if __name__ == "__main__":
     if train_args['perturb'] == "True":
         dataset.perturb(np.random.default_rng(int(train_args['seed']) + 1))
     model = getattr(models, train_args["model"])(dataset.nclasses)
-    try:
-        optimiser = getattr(optimisers, train_args["optimiser"])
-    except AttributeError:
-        optimiser = getattr(optax, train_args["optimiser"])
     state = train_state.TrainState.create(
         apply_fn=model.apply,
         params=model.init(jax.random.PRNGKey(0), dataset['train']['X'][:1]),
-        tx=optimiser(float(train_args["learning_rate"])),
+        tx=common.find_optimiser(train_args["optimiser"])(float(train_args["learning_rate"])),
     )
     ckpt_mgr = ocp.CheckpointManager(
         args.folder,
@@ -199,15 +196,23 @@ if __name__ == "__main__":
         state,
         restore_kwargs={'restore_args': orbax_utils.restore_args_from_target(state, mesh=None)}
     )
-    # state = train_state.TrainState.create(apply_fn=model.apply, params=state.params, tx=optax.sgd(0.001))
+    if args.optimiser:
+        state = train_state.TrainState.create(
+            apply_fn=model.apply,
+            params=state.params,
+            tx=common.find_optimiser(args.optimiser)(float(train_args["learning_rate"])),
+        )
+    if args.batch_size:
+        train_args['batch_size'] = args.batch_size
 
     all_results = {
-        k: [v for _ in range(args.runs)] for k, v in train_args.items() if k in ["dataset", "model", "optimiser", "pgd"]
+        k: [v for _ in range(args.runs)]
+        for k, v in train_args.items() if k in ["batch_size", "dataset", "model", "optimiser", "pgd"]
     }
     all_results['attack'] = [args.attack for _ in range(args.runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
     for i in range(0, args.runs):
-        seed = round(np.e**i + np.e**(i - 1) * np.cos(i * np.pi / 2)) % 2**31
+        seed = round(i**2 + i * np.cos(i * np.pi / 4)) % 2**31
         print(f"Performing the attack with {seed=}")
         Z, labels, idx = perform_attack(state, dataset, args.attack, train_args, seed)
         results = measure_leakage(dataset['train']['X'][idx], Z, dataset['train']['Y'][idx], labels)
