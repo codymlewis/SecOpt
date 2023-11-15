@@ -77,6 +77,10 @@ if __name__ == "__main__":
     parser.add_argument('-e', '--train_epochs', type=int, default=10, help="The number of epochs to perform training for.")
     parser.add_argument('-d', '--dataset', type=str, default="cifar10", help="Dataset to train on.")
     parser.add_argument('--attack', type=str, default="representation", help="The attack to perform.")
+    parser.add_argument('-b', '--batch-size', type=int, default=0,
+                        help="Batch for the gradient that the attack is performed upon.")
+    parser.add_argument('-z', '--zinit', type=str, default="uniform",
+                        help="Choose an initialisation fuction for the dummy data [default: uniform].")
     args = parser.parse_args()
 
     seed = 56
@@ -99,7 +103,9 @@ if __name__ == "__main__":
         params=model.init(jax.random.PRNGKey(seed), dataset['train']['X'][:1]),
         tx=optax.sgd(0.001),
     )
-    checkpoint_folder = "checkpoints/{}".format('-'.join([f'{k}={v}' for k, v in net_config.items() if k not in ['attack']]))
+    checkpoint_folder = "checkpoints/{}".format(
+        '-'.join([f'{k}={v}' for k, v in net_config.items() if k not in ['attack', 'batch_size', 'zinit']])
+    )
     ckpt_mgr = ocp.CheckpointManager(
         checkpoint_folder,
         ocp.Checkpointer(ocp.PyTreeCheckpointHandler()),
@@ -137,7 +143,12 @@ if __name__ == "__main__":
         attack_seed = round(i**2 + i * np.cos(i * np.pi / 4)) % 2**31
         print(f"Performing the attack with {attack_seed=}, {i=}")
         Z, labels, idx = attack.perform_attack(
-            state, dataset, args.attack, {"batch_size": batch_size, "pgd": False}, attack_seed
+            state,
+            dataset,
+            args.attack,
+            {"batch_size": args.batch_size if args.batch_size > 0 else batch_size, "pgd": False},
+            seed=attack_seed,
+            zinit=args.zinit,
         )
         results = attack.measure_leakage(dataset['train']['X'][idx], Z, dataset['train']['Y'][idx], labels)
         tuned_Z = attack.tune_brightness(Z.copy(), dataset['train']['X'][idx])

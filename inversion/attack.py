@@ -113,9 +113,10 @@ def measure_leakage(true_X, Z, true_Y, labels):
     return {"ssim": max(metrics['ssim']), "psnr": max(metrics['psnr'])}
 
 
-def perform_attack(state, dataset, attack, train_args, seed=42, espatience=100, esdelta=1e-4):
+def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform", espatience=100, esdelta=1e-4):
     batch_size = int(train_args['batch_size'])
-    idx = np.random.default_rng(seed).choice(len(dataset['train']['Y']), batch_size)
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(len(dataset['train']['Y']), batch_size)
     update_step = common.pgd_update_step if train_args["pgd"] else common.update_step
     loss, new_state = update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
 
@@ -135,8 +136,35 @@ def perform_attack(state, dataset, attack, train_args, seed=42, espatience=100, 
         case _:
             raise NotImplementedError(f"Attack {attack} is not implemented.")
 
-    # Z = jax.random.normal(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape) * 0.2 + 0.5
-    Z = jax.random.uniform(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape)
+    match zinit:
+        case "uniform":
+            Z = jax.random.uniform(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape)
+        case "normal":
+            Z = jax.random.normal(jax.random.PRNGKey(seed), shape=(batch_size,) + dataset.input_shape) * 0.2 + 0.5
+        case "data":
+            Z = []
+            for label in labels:
+                idx = np.arange(len(dataset['test']['Y']))[dataset['test']['Y'] == label]
+                Z.append(dataset['test']['X'][rng.choice(idx, 1)])
+            Z = jnp.concatenate(Z, axis=0)
+        case "repeated_pattern":
+            pattern = jax.random.uniform(
+                jax.random.PRNGKey(seed),
+                shape=(batch_size,) + tuple(i // 8 for i in dataset.input_shape[:-1]) + (dataset.input_shape[-1],)
+            )
+            Z = jnp.repeat(pattern, 8, axis=1)
+            Z = jnp.repeat(Z, 8, axis=2)
+        case "colour":
+            channel_data = jnp.ones((batch_size,) + dataset.input_shape[:-1] + (1,), dtype=jnp.float32)
+            if dataset.input_shape[-1] > 1:
+                other_channels = jnp.zeros(
+                    (batch_size,) + dataset.input_shape[:-1] + (dataset.input_shape[-1] - 1,),
+                    dtype=jnp.float32
+                )
+                channel_data = jnp.concatenate((channel_data, other_channels), axis=-1)
+            Z = channel_data
+        case _:
+            raise NotImplementedError(f"Dummy data initialisation {zinit} is not implemented.")
     attack_state = solver.init_state(Z)
     trainer = jax.jit(solver.update)
     early_stop = np.array([False for _ in range(espatience)])
@@ -149,7 +177,6 @@ def perform_attack(state, dataset, attack, train_args, seed=42, espatience=100, 
         if early_stop.all():
             tqdm.write(f"Stopping early with loss {attack_state.value} at step {s}")
             break
-    # Z = (Z - Z.min()) / (Z.max() - Z.min())
     Z = jnp.clip(Z, 0, 1)
     Z, labels = np.array(Z), np.array(labels)
     return Z, labels, idx
@@ -174,6 +201,8 @@ if __name__ == "__main__":
                         help="The type of gradient inversion attack to perform.")
     parser.add_argument('-b', '--batch-size', type=int, default=0, help="Override the batch size used in training.")
     parser.add_argument('-o', '--optimiser', type=str, default=None, help="Override the optimiser used in training.")
+    parser.add_argument('-z', '--zinit', type=str, default="uniform",
+                        help="Choose an initialisation fuction for the dummy data [default: uniform].")
     args = parser.parse_args()
 
     train_args = {a.split('=')[0]: a.split('=')[1] for a in args.folder[args.folder.rfind('/') + 1:].split('-')}
@@ -214,7 +243,7 @@ if __name__ == "__main__":
     for i in range(0, args.runs):
         seed = round(i**2 + i * np.cos(i * np.pi / 4)) % 2**31
         print(f"Performing the attack with {seed=}")
-        Z, labels, idx = perform_attack(state, dataset, args.attack, train_args, seed)
+        Z, labels, idx = perform_attack(state, dataset, args.attack, train_args, seed=seed, zinit=args.zinit)
         results = measure_leakage(dataset['train']['X'][idx], Z, dataset['train']['Y'][idx], labels)
         tuned_Z = tune_brightness(Z.copy(), dataset['train']['X'][idx])
         tuned_results = measure_leakage(dataset['train']['X'][idx], tuned_Z, dataset['train']['Y'][idx], labels)
