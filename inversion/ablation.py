@@ -165,5 +165,11 @@ if __name__ == "__main__":
     df = pd.DataFrame(all_results)
     print("Summary of the results")
     print(df.describe())
-    df.to_csv("ablation_results.csv", mode='a', header=not os.path.exists("ablation_results.csv"), index=False)
-    print("Added results to ablation_results.csv")
+    os.makedirs("ablation_results", exist_ok=True)
+    df.to_csv(
+        "ablation_results/ablation_results.csv",
+        mode='a',
+        header=not os.path.exists("ablation_results/ablation_results.csv"),
+        index=False,
+    )
+    print("Added results to abaltion_results/ablation_results.csv")

@@ -2,7 +2,7 @@
 
 
 for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
-    for optimiser in "sgd" "secadam"; do  # add dpsgd
+    for optimiser in "sgd" "secadam"; do
         if [[ $dataset == "fmnist" ]]; then
             models=("CNN" "LeNet")
         else

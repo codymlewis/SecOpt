@@ -2,6 +2,7 @@ import argparse
 from typing import Iterable
 import logging
 import itertools
+import numpy as np
 import pandas as pd
 import scipy.stats as sps
 import matplotlib.pyplot as plt
@@ -14,7 +15,7 @@ def limited_query(df, **kwargs):
     return df.query(' and '.join([f"`{k}` == '{v}'" for k, v in kwargs.items()]))
 
 
-def analysis_results(df, **kwargs):
+def analysis_results(df, return_dict=False, **kwargs):
     exp_variables = []
     k_to_remove = []
     for k, v in kwargs.items():
@@ -23,17 +24,22 @@ def analysis_results(df, **kwargs):
             k_to_remove.append(k)
     for k in k_to_remove:
         del kwargs[k]
-    results = []
+    results = {} if return_dict else []
     for ev in itertools.product(*exp_variables):
         exp_consts = kwargs.copy()
         for v in ev:
             exp_consts.update(v)
         filtered_results = limited_query(df, attack=args.attack, **exp_consts)
         if len(filtered_results) > 0:
-            results.append(filtered_results)
-            logging.info(f"Summary statistics for: {ev}")
-            logging.info(results[-1].describe())
-    if len(results) > 1:
+            if return_dict:
+                key = ' '.join([' '.join(v.values()) for v in ev])
+                print(f"{key=}")
+                results[key] = filtered_results
+            else:
+                results.append(filtered_results)
+                logging.info(f"Summary statistics for: {ev}")
+                logging.info(results[-1].describe())
+    if len(results) > 1 and not return_dict:
         print(f"ANOVA results: {sps.f_oneway(*[r.ssim for r in results])}")
         concat_results = pd.concat(results)
         print("Pearson correlation between the accuracy and attack SSIM: {}".format(
@@ -46,6 +52,13 @@ def plot_results(results, label):
     ssim_means = [r.ssim.mean() for r in results]
     acc_means = [r.accuracy.mean() for r in results]
     plt.scatter(acc_means, ssim_means, label=label, marker=next(MARKERS))
+
+
+def violin_plot(results, title):
+    plt.violinplot([v.ssim for v in results.values()], showmeans=True)
+    plt.xticks(np.arange(len(results.keys())) + 1, labels=list(results.keys()))
+    plt.savefig(f"{title}.png", dpi=320)
+    plt.clf()
 
 
 def unique_not_none(X):
@@ -63,10 +76,17 @@ if __name__ == "__main__":
         level=logging.INFO if args.verbose else logging.WARNING
     )
 
-    df = pd.read_csv("ablation_results.csv").dropna()
+    df = pd.read_csv("ablation_results/ablation_results.csv").dropna()
     print(f"Pearson correlation between the accuracy and attack SSIM: {sps.pearsonr(df.accuracy, df.ssim)}")
     print(f"Pearson correlation between the accuracy and attack PSNR: {sps.pearsonr(df.accuracy, df.psnr)}")
     print(f"Pearson correlation between the attack SSIM and attack PSNR: {sps.pearsonr(df.ssim, df.psnr)}")
+
+    if args.plot:
+        act_results = analysis_results(
+            df, return_dict=True, activation=unique_not_none(df.activation), pooling="none", normalisation="none"
+        )
+        violin_plot(act_results, "Activations")
+        exit(0)
 
     print("Activation analysis")
     results = analysis_results(df, activation=unique_not_none(df.activation), pooling="none", normalisation="none")
