@@ -166,10 +166,15 @@ if __name__ == "__main__":
     print("Summary of the results")
     print(df.describe())
     os.makedirs("ablation_results", exist_ok=True)
+    results_fn = "{}{}{}ablation_results.csv".format(
+        "rp_" if args.zinit == "repeated_pattern" else "sc_" if args.zinit == "colour" else "",
+        f"bs{args.batch_size}_" if args.batch_size > 0 else "",
+        f"e{args.train_epochs}_" if args.train_epochs != 10 else ""
+    )
     df.to_csv(
-        "ablation_results/ablation_results.csv",
+        f"ablation_results/{results_fn}",
         mode='a',
         header=not os.path.exists("ablation_results/ablation_results.csv"),
         index=False,
     )
-    print("Added results to abaltion_results/ablation_results.csv")
+    print(f"Added results to abaltion_results/{results_fn}")

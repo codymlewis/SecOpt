@@ -33,7 +33,6 @@ def analysis_results(df, return_dict=False, **kwargs):
         if len(filtered_results) > 0:
             if return_dict:
                 key = ' '.join([' '.join(v.values()) for v in ev])
-                print(f"{key=}")
                 results[key] = filtered_results
             else:
                 results.append(filtered_results)
@@ -56,6 +55,7 @@ def plot_results(results, label):
 
 def violin_plot(results, title):
     plt.violinplot([v.ssim for v in results.values()], showmeans=True)
+    plt.ylabel("SSIM")
     plt.xticks(np.arange(len(results.keys())) + 1, labels=list(results.keys()))
     plt.savefig(f"{title}.png", dpi=320)
     plt.clf()
@@ -86,12 +86,32 @@ if __name__ == "__main__":
             df, return_dict=True, activation=unique_not_none(df.activation), pooling="none", normalisation="none"
         )
         violin_plot(act_results, "Activations")
+
+        e30_df = pd.read_csv("ablation_results/e30_ablation_results.csv").dropna()
+        e30_act_results = analysis_results(
+            e30_df, return_dict=True, activation=unique_not_none(e30_df.activation), pooling="none", normalisation="none"
+        )
+        violin_plot(act_results, "30 Epoch Activations")
+
+        apn_results = analysis_results(
+            df, return_dict=True, activation="relu", pooling=["none", "max_pool"], normalisation=["none", "LayerNorm"]
+        )
+        violin_plot(apn_results, "APN")
+
+        bs1_df = pd.read_csv("ablation_results/bs1_ablation_results.csv").dropna()
+        rp_df = pd.read_csv("ablation_results/rp_bs1_ablation_results.csv").dropna()
+        sc_df = pd.read_csv("ablation_results/sc_bs1_ablation_results.csv").dropna()
+        full_results = {
+            "batch size 8": df,
+            "batch size 1": bs1_df,
+            "repeated pattern batch size 1": rp_df,
+            "solid colour batch size 1": sc_df,
+        }
+        violin_plot(full_results, "Full")
         exit(0)
 
     print("Activation analysis")
     results = analysis_results(df, activation=unique_not_none(df.activation), pooling="none", normalisation="none")
-    if args.plot:
-        plot_results(results, "act")
     print()
     print("Pooling analysis")
     results = analysis_results(
@@ -100,10 +120,12 @@ if __name__ == "__main__":
     print()
     print("Pooling with window size analysis")
     results = analysis_results(
-        df, activation="relu", pooling=unique_not_none(df.pooling), pool_size=unique_not_none(df.pool_size), normalisation="none"
+        df,
+        activation="relu",
+        pooling=unique_not_none(df.pooling),
+        pool_size=unique_not_none(df.pool_size),
+        normalisation="none"
     )
-    if args.plot:
-        plot_results(results, "pool")
     print()
     print("Normalisation analysis")
     results = analysis_results(df, activation="relu", pooling="none", normalisation=unique_not_none(df.normalisation))
@@ -118,15 +140,15 @@ if __name__ == "__main__":
         pool_size=unique_not_none(df.pool_size),
         normalisation="none"
     )
-    if args.plot:
-        plot_results(results, "act + pool")
     print()
     print("Activation + normalisation analysis")
     results = analysis_results(
-        df, activation=unique_not_none(df.activation), pooling="none", pool_size="small", normalisation=unique_not_none(df.normalisation)
+        df,
+        activation=unique_not_none(df.activation),
+        pooling="none",
+        pool_size="small",
+        normalisation=unique_not_none(df.normalisation)
     )
-    if args.plot:
-        plot_results(results, "act + norm")
     print()
     print("Pooling + normalisation analysis")
     results = analysis_results(
@@ -136,8 +158,6 @@ if __name__ == "__main__":
         pool_size=unique_not_none(df.pool_size),
         normalisation=unique_not_none(df.normalisation)
     )
-    if args.plot:
-        plot_results(results, "pooling + norm")
     print()
     print("All analysis")
     results = analysis_results(
@@ -148,15 +168,3 @@ if __name__ == "__main__":
         normalisation=unique_not_none(df.normalisation)
     )
     print()
-    if args.plot:
-        plot_results(results, "act + pooling + norm")
-
-    if args.plot:
-        plt.xlabel("Training Accuracy")
-        plt.ylabel("Attack SSIM")
-        plt.legend(title="Hyperparameters")
-        plt.savefig("plt.png", dpi=320)
-        plt.show()
-    else:
-        # create a table
-        pass
