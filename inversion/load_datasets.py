@@ -2,7 +2,6 @@ import datasets
 import numpy as np
 import einops
 from skimage import transform
-import matplotlib.pyplot as plt
 
 
 class Dataset:
@@ -13,7 +12,7 @@ class Dataset:
 
     def __getitem__(self, i):
         return self.data[i]
-    
+
     def __setitem__(self, i, v):
         self.data[i] = v
 
@@ -118,7 +117,8 @@ def tinyimagenet():
     ds = datasets.load_dataset("zh-plus/tiny-imagenet")
     ds = ds.map(
         lambda e: {
-            'X': einops.repeat(img, "h w -> h w 3") if len((img := np.array(e['image'], dtype=np.float32) / 255).shape) == 2 else img,
+            'X': einops.repeat(img, "h w -> h w 3") if len((img := np.array(e['image'], dtype=np.float32) / 255).shape) == 2
+            else img,
             'Y': e['label']
         },
         remove_columns=['image', 'label']
