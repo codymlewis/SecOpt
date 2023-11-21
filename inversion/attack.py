@@ -184,9 +184,7 @@ def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform",
 
 def tune_brightness(Z, ground_truth):
     "Tune the brightness of the recreated images with ground truth"
-    # Z *= ground_truth.std() / Z.std()
     Z *= einops.reduce(ground_truth, 'b h w c -> c', np.std) / einops.reduce(Z, 'b h w c -> c', np.std)
-    # Z += ground_truth.mean() - Z.mean()
     Z += einops.reduce(ground_truth, 'b h w c -> c', np.mean) + einops.reduce(Z, 'b h w c -> c', np.mean)
     Z = np.clip(Z, 0, 1)
     return Z
