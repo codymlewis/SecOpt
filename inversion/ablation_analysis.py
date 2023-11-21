@@ -53,10 +53,27 @@ def plot_results(results, label):
     plt.scatter(acc_means, ssim_means, label=label, marker=next(MARKERS))
 
 
+def process_labels(labels):
+    result_labels = []
+    for label in labels:
+        label = label.replace("_", " ")
+        label = label.title()
+        label = label.replace("Relu", "ReLU")
+        label = label.replace("Elu", "ELU")
+        label = label.replace("None", "")
+        label = label.strip()
+        if label == "":
+            label = "Baseline"
+        result_labels.append(label)
+    return result_labels
+
+
 def violin_plot(results, title):
     plt.violinplot([v.ssim for v in results.values()], showmeans=True)
     plt.ylabel("SSIM")
-    plt.xticks(np.arange(len(results.keys())) + 1, labels=list(results.keys()))
+    processed_labels = process_labels(results.keys())
+    plt.xticks(np.arange(len(results.keys())) + 1, labels=processed_labels)
+    plt.ylim((min(0.0, min([v.ssim.min() for v in results.values()]) - 0.05), 1.0))
     plt.savefig(f"{title}.png", dpi=320)
     plt.clf()
 
@@ -91,7 +108,7 @@ if __name__ == "__main__":
         e30_act_results = analysis_results(
             e30_df, return_dict=True, activation=unique_not_none(e30_df.activation), pooling="none", normalisation="none"
         )
-        violin_plot(act_results, "30 Epoch Activations")
+        violin_plot(e30_act_results, "30 Epoch Activations")
 
         apn_results = analysis_results(
             df, return_dict=True, activation="relu", pooling=["none", "max_pool"], normalisation=["none", "LayerNorm"]
@@ -102,10 +119,10 @@ if __name__ == "__main__":
         rp_df = pd.read_csv("ablation_results/rp_bs1_ablation_results.csv").dropna()
         sc_df = pd.read_csv("ablation_results/sc_bs1_ablation_results.csv").dropna()
         full_results = {
-            "batch size 8": df,
-            "batch size 1": bs1_df,
-            "repeated pattern batch size 1": rp_df,
-            "solid colour batch size 1": sc_df,
+            "Batch size 8": df,
+            "Batch size 1": bs1_df,
+            "Repeated pattern": rp_df,
+            "Solid colour": sc_df,
         }
         violin_plot(full_results, "Full")
         exit(0)

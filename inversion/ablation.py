@@ -77,6 +77,7 @@ if __name__ == "__main__":
     parser.add_argument('-e', '--train_epochs', type=int, default=10, help="The number of epochs to perform training for.")
     parser.add_argument('-d', '--dataset', type=str, default="cifar10", help="Dataset to train on.")
     parser.add_argument('--attack', type=str, default="representation", help="The attack to perform.")
+    parser.add_argument('--lr', type=float, default=0.001, help="The learning rate for training.")
     parser.add_argument('-b', '--batch-size', type=int, default=0,
                         help="Batch for the gradient that the attack is performed upon.")
     parser.add_argument('-z', '--zinit', type=str, default="uniform",
@@ -101,7 +102,7 @@ if __name__ == "__main__":
     state = train_state.TrainState.create(
         apply_fn=model.apply,
         params=model.init(jax.random.PRNGKey(seed), dataset['train']['X'][:1]),
-        tx=optax.sgd(0.001),
+        tx=optax.sgd(args.lr),
     )
     checkpoint_folder = "checkpoints/{}".format(
         '-'.join([f'{k}={v}' for k, v in net_config.items() if k not in ['attack', 'batch_size', 'zinit']])
@@ -174,7 +175,7 @@ if __name__ == "__main__":
     df.to_csv(
         f"ablation_results/{results_fn}",
         mode='a',
-        header=not os.path.exists("ablation_results/ablation_results.csv"),
+        header=not os.path.exists(f"ablation_results/{results_fn}"),
         index=False,
     )
     print(f"Added results to abaltion_results/{results_fn}")
