@@ -205,7 +205,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     train_args = {a.split('=')[0]: a.split('=')[1] for a in args.folder[args.folder.rfind('/') + 1:].split('-')}
-    print(f"Performing the attack on {train_args}")
+    print(f"Performing the attack on {train_args} with {vars(args)}")
     dataset = getattr(load_datasets, train_args['dataset'])()
     if train_args['perturb'] == "True":
         dataset.perturb(np.random.default_rng(int(train_args['seed']) + 1))
