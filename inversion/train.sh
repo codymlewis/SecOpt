@@ -1,12 +1,13 @@
 #!/bin/bash
 
 
-for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
-    for optimiser in "sgd" "secadam"; do
+# for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
+for dataset in tinyimagenet; do
+    for optimiser in "secadam"; do
         if [[ $dataset == "fmnist" ]]; then
             models=("CNN" "LeNet")
         else
-            models=("CNN" "DenseNet121" "ConvNeXt" "ResNetV2")
+            models=("ConvNeXt")
         fi
         if [[ $dataset == "cifar100" ]] || [[ $dataset == "tinyimagenet" ]]; then
             batch_size=32
@@ -15,8 +16,9 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
         fi
 
         for model in ${models[@]}; do
-            for other_flags in "" "--pgd" "--perturb" "--pgd --perturb"; do
-                python train.py --epochs 10 --dataset $dataset --optimiser $optimiser --model $model --batch-size $batch_size $other_flags
+            # for other_flags in "" "--pgd" "--perturb" "--pgd --perturb"; do
+            for other_flags in ""; do
+                python train.py --epochs 50 --dataset $dataset --optimiser $optimiser --model $model --batch-size $batch_size $other_flags
             done
         done
     done

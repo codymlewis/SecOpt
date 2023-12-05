@@ -201,6 +201,7 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--optimiser', type=str, default=None, help="Override the optimiser used in training.")
     parser.add_argument('-z', '--zinit', type=str, default="uniform",
                         help="Choose an initialisation fuction for the dummy data [default: uniform].")
+    parser.add_argument('--accuracy', action='store_true', help="Show the accuracy of the model.")
     args = parser.parse_args()
 
     train_args = {a.split('=')[0]: a.split('=')[1] for a in args.folder[args.folder.rfind('/') + 1:].split('-')}
@@ -223,6 +224,11 @@ if __name__ == "__main__":
         state,
         restore_kwargs={'restore_args': orbax_utils.restore_args_from_target(state, mesh=None)}
     )
+    if args.accuracy:
+        print("Final accuracy: {:.3%}".format(
+            common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=int(train_args["batch_size"]))
+        ))
+
     if args.optimiser:
         state = train_state.TrainState.create(
             apply_fn=model.apply,
