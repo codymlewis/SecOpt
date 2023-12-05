@@ -241,9 +241,11 @@ if __name__ == "__main__":
 
     all_results = {
         k: [v for _ in range(args.runs)]
-        for k, v in train_args.items() if k in ["batch_size", "dataset", "model", "optimiser", "pgd"]
+        for k, v in train_args.items() if k in ["dataset", "model", "pgd"]
     }
     all_results['attack'] = [args.attack for _ in range(args.runs)]
+    all_results['optimiser'] = [args.optimiser for _ in range(args.runs)]
+    all_results['batch_size'] = [args.batch_size for _ in range(args.runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
     for i in range(0, args.runs):
         seed = round(i**2 + i * np.cos(i * np.pi / 4)) % 2**31
