@@ -58,9 +58,60 @@ class LeNet(nn.Module):
         return x
 
 
+class VGG16(nn.Module):
+    classes: int = 10
+
+    @nn.compact
+    def __call__(self, x, representation=False):
+        x = nn.Conv(64, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.Conv(64, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.max_pool(x, (2, 2), strides=(2, 2))
+
+        x = nn.Conv(128, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.Conv(128, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.max_pool(x, (2, 2), strides=(2, 2))
+
+        x = nn.Conv(256, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.Conv(256, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.Conv(256, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.max_pool(x, (2, 2), strides=(2, 2))
+
+        x = nn.Conv(512, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.Conv(512, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.Conv(512, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.max_pool(x, (2, 2), strides=(2, 2))
+
+        x = nn.Conv(512, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.Conv(512, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.Conv(512, (3, 3))(x)
+        x = nn.relu(x)
+        x = nn.max_pool(x, (2, 2), strides=(2, 2))
+
+        x = einops.rearrange(x, "b h w c -> b (h w c)")
+        x = nn.Dense(4096)(x)
+        x = nn.relu(x)
+        x = nn.Dense(4096)(x)
+        x = nn.relu(x)
+        x = nn.Dense(self.classes, name="classifier")(x)
+        x = nn.softmax(x)
+        return x
+
+
 # DenseNet121
 class DenseNet121(nn.Module):
-    classes: int
+    classes: int = 10
 
     @nn.compact
     def __call__(self, x, representation=False):

@@ -1,6 +1,7 @@
 import argparse
 import math
 import shutil
+import os
 import numpy as np
 import jax
 from flax.training import train_state, orbax_utils
@@ -58,8 +59,19 @@ if __name__ == "__main__":
             dataset.perturb(rng)
         pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
     ckpt_mgr.save(e, state, save_kwargs={'save_args': orbax_utils.save_args_from_target(state)})
-    print("Final accuracy: {:.3%}".format(
-        common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size)
-    ))
+    final_accuracy = common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size)
+    print(f"Final accuracy: {final_accuracy:.3%}")
     ckpt_mgr.close()
     print(f"Checkpoints were saved to {checkpoint_folder}")
+
+    accuracy_file = "accuracies.csv"
+    training_details = vars(args)
+    training_details['accuracy'] = final_accuracy
+    if not os.path.exists(accuracy_file):
+        with open(accuracy_file, 'w') as f:
+            f.write(",".join(training_details.keys()))
+            f.write("\n")
+    with open(accuracy_file, 'a') as f:
+        f.write(','.join([str(v) for v in training_details.values()]))
+        f.write("\n")
+    print(f"Accuracy details written to {accuracy_file}")

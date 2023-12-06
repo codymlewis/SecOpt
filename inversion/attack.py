@@ -1,6 +1,7 @@
 import argparse
 import math
 import os
+import gc
 
 import numpy as np
 import jax
@@ -179,6 +180,10 @@ def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform",
             break
     Z = jnp.clip(Z, 0, 1)
     Z, labels = np.array(Z), np.array(labels)
+
+    del attack_state
+    del trainer
+    del true_grads
     return Z, labels, idx
 
 
@@ -262,6 +267,7 @@ if __name__ == "__main__":
             all_results[k].append(v)
         all_results["seed"].append(seed)
         print(f"Attack performance: {results}")
+        gc.collect()
     if args.plot:
         os.makedirs("plots", exist_ok=True)
         print("Ground truth")
