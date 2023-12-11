@@ -1,8 +1,0 @@
-jaxopt
-optax
-flax
-einops
-datasets
-pandas
-transformers
-scikit-learn

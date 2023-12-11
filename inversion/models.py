@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import flax.linen as nn
 import einops
@@ -111,8 +112,8 @@ class VGG16(nn.Module):
 
 # DenseNet
 class DenseNet(nn.Module):
+    blocks: jax.Array
     classes: int = 10
-    blocks: list[int] = [6, 12, 24, 16]
 
     @nn.compact
     def __call__(self, x, representation=False):
@@ -136,11 +137,11 @@ class DenseNet(nn.Module):
 
 
 def DenseNet121(*args, **kwargs):
-    return DenseNet(*args, **kwargs, blocks=[6, 12, 24, 16])
+    return DenseNet(*args, **kwargs, blocks=jnp.array([6, 12, 24, 16]))
 
 
 def DenseNet161(*args, **kwargs):
-    return DenseNet(*args, **kwargs, blocks=[6, 12, 36, 24])
+    return DenseNet(*args, **kwargs, blocks=jnp.array([6, 12, 36, 24]))
 
 
 class ConvBlock(nn.Module):
