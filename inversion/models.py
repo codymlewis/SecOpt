@@ -350,7 +350,3 @@ class Stack2(nn.Module):
             x = Block2(self.filters, name=f"{self.name}_block{i}")(x)
         x = Block2(self.filters, strides=self.strides1, name=f"{self.name}_block{self.blocks}")(x)
         return x
-
-
-# if __name__ == "__main__":
-#     print(nn.tabulate(LeNet(), jax.random.PRNGKey(0))(jnp.ones((1, 32, 32, 1))))
