@@ -109,9 +109,10 @@ class VGG16(nn.Module):
         return x
 
 
-# DenseNet121
-class DenseNet121(nn.Module):
+# DenseNet
+class DenseNet(nn.Module):
     classes: int = 10
+    blocks: list[int] = [6, 12, 24, 16]
 
     @nn.compact
     def __call__(self, x, representation=False):
@@ -121,13 +122,9 @@ class DenseNet121(nn.Module):
         x = nn.relu(x)
         x = jnp.pad(x, ((0, 0), (1, 1), (1, 1), (0, 0)))
         x = nn.max_pool(x, (3, 3), (2, 2))
-        x = DenseBlock(6, name="conv2")(x)
-        x = TransitionBlock(0.5, name="pool2", )(x)
-        x = DenseBlock(12, name="conv3")(x)
-        x = TransitionBlock(0.5, name="pool3", )(x)
-        x = DenseBlock(24, name="conv4")(x)
-        x = TransitionBlock(0.5, name="pool4", )(x)
-        x = DenseBlock(16, name="conv5")(x)
+        for i, block in enumerate(self.blocks):
+            x = DenseBlock(block, name=f"conv{i + 2}")(x)
+            x = TransitionBlock(0.5, name=f"pool{i + 2}")(x)
         x = nn.LayerNorm(epsilon=1.001e-5, use_bias=False, name="ln")(x)
         x = nn.relu(x)
         x = einops.reduce(x, "b w h d -> b d", "mean")  # Global average pooling
@@ -136,6 +133,14 @@ class DenseNet121(nn.Module):
         x = nn.Dense(self.classes, name="classifier")(x)
         x = nn.softmax(x)
         return x
+
+
+def DenseNet121(*args, **kwargs):
+    return DenseNet(*args, **kwargs, blocks=[6, 12, 24, 16])
+
+
+def DenseNet161(*args, **kwargs):
+    return DenseNet(*args, **kwargs, blocks=[6, 12, 36, 24])
 
 
 class ConvBlock(nn.Module):

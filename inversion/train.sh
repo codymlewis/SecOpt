@@ -6,7 +6,7 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
         models=("CNN" "LeNet")
     else
         models=("ResNetV2" "ConvNeXt")
-        # models=("DenseNet121")
+        # models=("ResNetV2" "DenseNet121", "DenseNet161")
     fi
     if [[ $dataset == "cifar100" ]] || [[ $dataset == "tinyimagenet" ]]; then
         batch_size=32
