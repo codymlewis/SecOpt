@@ -1,12 +1,11 @@
 import argparse
 import math
-import shutil
 import os
 import numpy as np
 import jax
-from flax.training import train_state, orbax_utils
-import orbax.checkpoint as ocp
+from flax.training import train_state
 from tqdm import trange
+import safeflax
 
 import load_datasets
 import models
@@ -38,13 +37,7 @@ if __name__ == "__main__":
         tx=common.find_optimiser(args.optimiser)(args.learning_rate),
     )
 
-    checkpoint_folder = "checkpoints/{}".format('-'.join([f'{k}={v}' for k, v in vars(args).items()]))
-    shutil.rmtree(checkpoint_folder, ignore_errors=True)
-    ckpt_mgr = ocp.CheckpointManager(
-        checkpoint_folder,
-        ocp.Checkpointer(ocp.PyTreeCheckpointHandler()),
-        options=ocp.CheckpointManagerOptions(create=True, keep_period=1),
-    )
+    checkpoint_file = "checkpoints/{}.safetensors".format('-'.join([f'{k}={v}' for k, v in vars(args).items()]))
     update_step = common.pgd_update_step if args.pgd else common.update_step
 
     for e in (pbar := trange(args.epochs)):
@@ -58,11 +51,10 @@ if __name__ == "__main__":
         if args.perturb:
             dataset.perturb(rng)
         pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
-    ckpt_mgr.save(e, state, save_kwargs={'save_args': orbax_utils.save_args_from_target(state)})
+    safeflax.save_file(state.params, checkpoint_file)
     final_accuracy = common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size)
     print(f"Final accuracy: {final_accuracy:.3%}")
-    ckpt_mgr.close()
-    print(f"Checkpoints were saved to {checkpoint_folder}")
+    print(f"Checkpoints were saved to {checkpoint_file}")
 
     accuracy_file = "accuracies.csv"
     training_details = vars(args)

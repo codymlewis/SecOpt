@@ -6,8 +6,7 @@ import gc
 import numpy as np
 import jax
 import jax.numpy as jnp
-import orbax.checkpoint as ocp
-from flax.training import train_state, orbax_utils
+from flax.training import train_state
 import optax
 import jaxopt
 from tqdm import tqdm, trange
@@ -15,6 +14,7 @@ import matplotlib.pyplot as plt
 import skimage.metrics as skim
 import pandas as pd
 import einops
+import safeflax
 
 import models
 import load_datasets
@@ -193,7 +193,7 @@ def tune_brightness(Z, ground_truth):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train neural network models for inversion attacks.")
-    parser.add_argument('-f', '--folder', type=str, required=True, help="Folder containing the checkpoints of the model")
+    parser.add_argument('-f', '--file', type=str, required=True, help="File containing the checkpoint of the model")
     parser.add_argument('-r', '--runs', type=int, default=1, help="Number of runs of the attack to perform.")
     parser.add_argument('-p', '--plot', action="store_true", help="Whether to plot the final results.")
     parser.add_argument('-a', '--attack', type=str, default="representation",
@@ -205,7 +205,9 @@ if __name__ == "__main__":
     parser.add_argument('--accuracy', action='store_true', help="Show the accuracy of the model.")
     args = parser.parse_args()
 
-    train_args = {a.split('=')[0]: a.split('=')[1] for a in args.folder[args.folder.rfind('/') + 1:].split('-')}
+    train_args = {
+        a.split('=')[0]: a.split('=')[1] for a in args.file.replace(".safetensors", "")[args.file.rfind('/') + 1:].split('-')
+    }
     print(f"Performing the attack on {train_args} with {vars(args)}")
     dataset = getattr(load_datasets, train_args['dataset'])()
     if train_args['perturb'] == "True":
@@ -213,18 +215,8 @@ if __name__ == "__main__":
     model = getattr(models, train_args["model"])(dataset.nclasses)
     state = train_state.TrainState.create(
         apply_fn=model.apply,
-        params=model.init(jax.random.PRNGKey(0), dataset['train']['X'][:1]),
+        params=safeflax.load_file(args.file),
         tx=common.find_optimiser(train_args["optimiser"])(float(train_args["learning_rate"])),
-    )
-    ckpt_mgr = ocp.CheckpointManager(
-        args.folder,
-        ocp.Checkpointer(ocp.PyTreeCheckpointHandler()),
-        options=None,
-    )
-    state = ckpt_mgr.restore(
-        int(train_args["epochs"]) - 1 if args.attack == "representation" else 0,
-        state,
-        restore_kwargs={'restore_args': orbax_utils.restore_args_from_target(state, mesh=None)}
     )
     if args.accuracy:
         print("Final accuracy: {:.3%}".format(

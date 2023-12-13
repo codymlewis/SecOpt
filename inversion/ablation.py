@@ -6,12 +6,12 @@ from functools import partial
 import numpy as np
 import jax
 import flax.linen as nn
-from flax.training import train_state, orbax_utils
+from flax.training import train_state
 import einops
 import optax
-import orbax.checkpoint as ocp
 from tqdm import trange
 import pandas as pd
+import safeflax
 
 import load_datasets
 import attack
@@ -104,22 +104,13 @@ if __name__ == "__main__":
         params=model.init(jax.random.PRNGKey(seed), dataset['train']['X'][:1]),
         tx=optax.sgd(args.lr),
     )
-    checkpoint_folder = "checkpoints/{}".format(
+    checkpoint_file = "checkpoints/{}.safetensor".format(
         '-'.join([f'{k}={v}' for k, v in net_config.items() if k not in ['attack', 'batch_size', 'zinit']])
     )
-    ckpt_mgr = ocp.CheckpointManager(
-        checkpoint_folder,
-        ocp.Checkpointer(ocp.PyTreeCheckpointHandler()),
-        options=ocp.CheckpointManagerOptions(create=True, keep_period=1),
-    )
 
-    if os.path.exists(f"{checkpoint_folder}/{args.train_epochs - 1}"):
-        state = ckpt_mgr.restore(
-            args.train_epochs - 1,
-            state,
-            restore_kwargs={'restore_args': orbax_utils.restore_args_from_target(state, mesh=None)}
-        )
-        print(f"Checkpoint loaded from {checkpoint_folder}")
+    if os.path.exists(checkpoint_file):
+        state = state.replace(params=safeflax.load_load_file(checkpoint_file))
+        print(f"Checkpoint loaded from {checkpoint_file}")
     else:
         for e in (pbar := trange(args.train_epochs)):
             idxs = np.array_split(
@@ -129,10 +120,9 @@ if __name__ == "__main__":
             for idx in idxs:
                 loss, state = common.update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
                 loss_sum += loss
-            ckpt_mgr.save(e, state, save_kwargs={'save_args': orbax_utils.save_args_from_target(state)})
             pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
-        print(f"Checkpoints were saved to {checkpoint_folder}")
-    ckpt_mgr.close()
+        safeflax.save_file(state.params, checkpoint_file)
+        print(f"Checkpoints were saved to {checkpoint_file}")
     final_accuracy = common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=batch_size)
     print(f"Final accuracy: {final_accuracy:.3%}")
 
