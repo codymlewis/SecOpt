@@ -78,13 +78,9 @@ def representation_loss(state, true_reps, lamb_tv=1e-4):
     return _apply
 
 
-def plot_image_array(images, labels, filename):
-    # Order the data according to label values
-    idx = np.argsort(labels)
-    images = images[idx]
-    labels = labels[idx]
+def plot_image_array(images, filename):
     # Plot a grid of images
-    batch_size = len(labels)
+    batch_size = len(images)
     if batch_size > 1:
         if batch_size > 3:
             nrows = math.floor(math.sqrt(batch_size))
@@ -94,15 +90,15 @@ def plot_image_array(images, labels, filename):
         fig, axes = plt.subplots(nrows, ncols)
         for i, ax in enumerate(axes.flatten()):
             if i < batch_size:
-                ax.set_title(f"Label: {labels[i]}")
+                # ax.set_title(f"Label: {labels[i]}")
                 ax.imshow(images[i], cmap='binary')
             ax.axis('off')
     else:
-        plt.title(f"Label: {labels[0]}")
+        # plt.title(f"Label: {labels[0]}")
         plt.imshow(images[0], cmap="binary")
     plt.tight_layout()
     plt.savefig(filename, dpi=320)
-    plt.show()
+    plt.clf()
 
 
 def measure_leakage(true_X, Z, true_Y, labels):
@@ -252,6 +248,8 @@ if __name__ == "__main__":
     all_results['optimiser'] = [args.optimiser for _ in range(args.runs)]
     all_results['batch_size'] = [args.batch_size for _ in range(args.runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
+    if args.plot:
+        all_Zs, all_idxs = [], []
     for i in range(0, args.runs):
         seed = round(i**2 + i * np.cos(i * np.pi / 4)) % 2**31
         print(f"Performing the attack with {seed=}")
@@ -267,22 +265,26 @@ if __name__ == "__main__":
             all_results[k].append(v)
         all_results["seed"].append(seed)
         print(f"Attack performance: {results}")
+        if args.plot:
+            all_Zs.append(Z)
+            all_idxs.append(idx)
         gc.collect()
     if args.plot:
+        Z = jnp.concatenate(all_Zs, axis=0)
+        idx = jnp.concatenate(all_idxs, axis=0)
         os.makedirs("plots", exist_ok=True)
         print("Ground truth")
         plot_image_array(
-            dataset['train']['X'][idx], dataset['train']['Y'][idx], f"plots/{train_args['dataset']}_ground_truth.png"
+            dataset['train']['X'][idx], f"plots/{train_args['dataset']}_ground_truth.png"
         )
         print("Attack images")
         plot_image_array(
             Z,
-            labels,
             "plots/{}_{}_{}_{}{}.png".format(
                 args.attack,
                 train_args['model'],
                 train_args['dataset'],
-                train_args['optimiser'],
+                args.optimiser if args.optimiser else train_args['optimiser'],
                 '_pgd' if train_args['pgd'] == 'True' else ''
             )
         )
