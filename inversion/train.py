@@ -28,8 +28,6 @@ if __name__ == "__main__":
     print(f"Training with {vars(args)}")
     rng = np.random.default_rng(args.seed)
     dataset = getattr(load_datasets, args.dataset)()
-    if args.perturb:
-        dataset.perturb(rng)
     model = getattr(models, args.model)(dataset.nclasses)
     state = train_state.TrainState.create(
         apply_fn=model.apply,
@@ -41,6 +39,8 @@ if __name__ == "__main__":
     update_step = common.pgd_update_step if args.pgd else common.update_step
 
     for e in (pbar := trange(args.epochs)):
+        if args.perturb:
+            dataset.perturb(rng)
         idxs = np.array_split(
             rng.permutation(len(dataset['train']['Y'])), math.ceil(len(dataset['train']['Y']) / args.batch_size)
         )
@@ -48,8 +48,6 @@ if __name__ == "__main__":
         for idx in idxs:
             loss, state = update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
             loss_sum += loss
-        if args.perturb:
-            dataset.perturb(rng)
         pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
     safeflax.save_file(state.params, checkpoint_file)
     final_accuracy = common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size)

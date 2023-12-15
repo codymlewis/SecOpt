@@ -9,11 +9,11 @@ import jax.numpy as jnp
 from flax.training import train_state
 import optax
 import jaxopt
-from tqdm import tqdm, trange
+from tqdm import trange
 import matplotlib.pyplot as plt
+import skimage as ski
 import skimage.metrics as skim
 import pandas as pd
-import einops
 import safeflax
 
 import models
@@ -65,16 +65,21 @@ def cosine_dist(A, B):
 
 
 def total_variation(V):
-    return abs(V[:, 1:, :] - V[:, :-1, :]).sum() + abs(V[:, :, 1:] - V[:, :, :-1]).sum()
+    pixel_dif1 = V[:, 1:, :] - V[:, :-1, :]
+    pixel_dif2 = V[:, :, 1:] - V[:, :, :-1]
+    tv_l1 = jnp.abs(pixel_dif1).sum() + jnp.abs(pixel_dif2).sum()
+    tv_l2 = (pixel_dif1**2).sum() + (pixel_dif2**2).sum()
+    return tv_l1, tv_l2
 
 
-def representation_loss(state, true_reps, lamb_tv=1e-4):
+def representation_loss(state, true_reps, l1_reg=0.0, l2_reg=1e-6):
     """
     Representation inversion attack proposed in https://arxiv.org/abs/2202.10546
     """
     def _apply(Z):
         dist = cosine_dist(state.apply_fn(state.params, Z, representation=True), true_reps)
-        return dist + lamb_tv * total_variation(Z)
+        tv_l1, tv_l2 = total_variation(Z)
+        return dist + l1_reg * tv_l1 + l2_reg * tv_l2
     return _apply
 
 
@@ -90,11 +95,9 @@ def plot_image_array(images, filename):
         fig, axes = plt.subplots(nrows, ncols)
         for i, ax in enumerate(axes.flatten()):
             if i < batch_size:
-                # ax.set_title(f"Label: {labels[i]}")
                 ax.imshow(images[i], cmap='binary')
             ax.axis('off')
     else:
-        # plt.title(f"Label: {labels[0]}")
         plt.imshow(images[0], cmap="binary")
     plt.tight_layout()
     plt.savefig(filename, dpi=320)
@@ -102,6 +105,10 @@ def plot_image_array(images, filename):
 
 
 def measure_leakage(true_X, Z, true_Y, labels):
+    if true_X.shape[-1] > 1:
+        true_X = np.array([ski.color.rgb2gray(x) for x in true_X]).reshape(true_X.shape[:-1] + (1,))
+    if Z.shape[-1] > 1:
+        Z = np.array([ski.color.rgb2gray(z) for z in Z]).reshape(Z.shape[:-1] + (1,))
     metrics = {"ssim": [], "psnr": []}
     for tx in true_X:
         for z in Z:
@@ -110,7 +117,7 @@ def measure_leakage(true_X, Z, true_Y, labels):
     return {"ssim": max(metrics['ssim']), "psnr": max(metrics['psnr'])}
 
 
-def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform", espatience=100, esdelta=1e-4):
+def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform", l1_reg=0.0, l2_reg=1e-6, nsteps=1000):
     batch_size = int(train_args['batch_size'])
     rng = np.random.default_rng(seed)
     idx = rng.choice(len(dataset['train']['Y']), batch_size)
@@ -123,7 +130,10 @@ def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform",
     match attack:
         case "representation":
             true_reps = true_grads['params']['classifier']['kernel'].T[labels]
-            solver = jaxopt.OptaxSolver(representation_loss(state, true_reps), optax.lion(0.01))
+            solver = jaxopt.OptaxSolver(
+                representation_loss(state, true_reps, l1_reg=l1_reg, l2_reg=l2_reg),
+                optax.lion(optax.cosine_decay_schedule(0.1, nsteps))
+            )
         case "cpl":
             solver = jaxopt.LBFGS(cpl_loss(state, update_step, true_grads, labels))
         case "idlg":
@@ -141,8 +151,8 @@ def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform",
         case "data":
             Z = []
             for label in labels:
-                idx = np.arange(len(dataset['test']['Y']))[dataset['test']['Y'] == label]
-                Z.append(dataset['test']['X'][rng.choice(idx, 1)])
+                test_idx = np.arange(len(dataset['test']['Y']))[dataset['test']['Y'] == label]
+                Z.append(dataset['test']['X'][rng.choice(test_idx, 1)])
             Z = jnp.concatenate(Z, axis=0)
         case "repeated_pattern":
             pattern = jax.random.uniform(
@@ -164,16 +174,9 @@ def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform",
             raise NotImplementedError(f"Dummy data initialisation {zinit} is not implemented.")
     attack_state = solver.init_state(Z)
     trainer = jax.jit(solver.update)
-    early_stop = np.array([False for _ in range(espatience)])
-    prev_loss = 0.0
-    for s in (pbar := trange(1000)):
+    for s in (pbar := trange(nsteps)):
         Z, attack_state = trainer(Z, attack_state)
         pbar.set_postfix_str(f"LOSS: {attack_state.value:.5f}")
-        early_stop[s % len(early_stop)] = abs(prev_loss - attack_state.value) < esdelta
-        prev_loss = attack_state.value
-        if early_stop.all():
-            tqdm.write(f"Stopping early with loss {attack_state.value} at step {s}")
-            break
     Z = jnp.clip(Z, 0, 1)
     Z, labels = np.array(Z), np.array(labels)
 
@@ -185,8 +188,10 @@ def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform",
 
 def tune_brightness(Z, ground_truth):
     "Tune the brightness of the recreated images with ground truth"
-    Z *= einops.reduce(ground_truth, 'b h w c -> c', np.std) / einops.reduce(Z, 'b h w c -> c', np.std)
-    Z += einops.reduce(ground_truth, 'b h w c -> c', np.mean) + einops.reduce(Z, 'b h w c -> c', np.mean)
+    # Z *= einops.reduce(ground_truth, 'b h w c -> c', np.std) / einops.reduce(Z, 'b h w c -> c', np.std)
+    Z *= ground_truth.std() / Z.std()
+    # Z += einops.reduce(ground_truth, 'b h w c -> c', np.mean) + einops.reduce(Z, 'b h w c -> c', np.mean)
+    Z += ground_truth.mean() + Z.mean()
     Z = np.clip(Z, 0, 1)
     return Z
 
@@ -202,26 +207,27 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--optimiser', type=str, default=None, help="Override the optimiser used in training.")
     parser.add_argument('-z', '--zinit', type=str, default="uniform",
                         help="Choose an initialisation fuction for the dummy data [default: uniform].")
-    parser.add_argument('--accuracy', action='store_true', help="Show the accuracy of the model.")
+    parser.add_argument('--l1-reg', type=float, default=0.0, help="Influence of L1 total variation in the attack")
+    parser.add_argument('--l2-reg', type=float, default=1e-6, help="Influence of L2 total variation in the attack")
     args = parser.parse_args()
 
     train_args = {
         a.split('=')[0]: a.split('=')[1] for a in args.file.replace(".safetensors", "")[args.file.rfind('/') + 1:].split('-')
     }
-    print(f"Performing the attack on {train_args} with {vars(args)}")
+    print(f"Performing the attack with {vars(args)}")
     dataset = getattr(load_datasets, train_args['dataset'])()
     if train_args['perturb'] == "True":
         dataset.perturb(np.random.default_rng(int(train_args['seed']) + 1))
     model = getattr(models, train_args["model"])(dataset.nclasses)
+    if args.attack == "representation":
+        init_params = safeflax.load_file(args.file)
+    else:
+        init_params = model.init(jax.random.PRNGKey(train_args['seed'], dataset['train'][:1]))
     state = train_state.TrainState.create(
         apply_fn=model.apply,
-        params=safeflax.load_file(args.file),
+        params=init_params,
         tx=common.find_optimiser(train_args["optimiser"])(float(train_args["learning_rate"])),
     )
-    if args.accuracy:
-        print("Final accuracy: {:.3%}".format(
-            common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=int(train_args["batch_size"]))
-        ))
 
     if args.optimiser:
         state = train_state.TrainState.create(
@@ -245,7 +251,9 @@ if __name__ == "__main__":
     for i in range(0, args.runs):
         seed = round(i**2 + i * np.cos(i * np.pi / 4)) % 2**31
         print(f"Performing the attack with {seed=}")
-        Z, labels, idx = perform_attack(state, dataset, args.attack, train_args, seed=seed, zinit=args.zinit)
+        Z, labels, idx = perform_attack(
+            state, dataset, args.attack, train_args, seed=seed, zinit=args.zinit, l1_reg=args.l1_reg, l2_reg=args.l2_reg
+        )
         results = measure_leakage(dataset['train']['X'][idx], Z, dataset['train']['Y'][idx], labels)
         tuned_Z = tune_brightness(Z.copy(), dataset['train']['X'][idx])
         tuned_results = measure_leakage(dataset['train']['X'][idx], tuned_Z, dataset['train']['Y'][idx], labels)
