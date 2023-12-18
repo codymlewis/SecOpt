@@ -8,7 +8,7 @@ from skimage import transform
 class Dataset:
     def __init__(self, data, input_shape, nclasses):
         self.data = data
-        self.orig_data = copy.deepcopy(data)
+        self.orig_data = None
         self.input_shape = input_shape
         self.nclasses = nclasses
         self.nsamples = len(data['train']['Y'])
@@ -21,7 +21,10 @@ class Dataset:
 
     def perturb(self, rng):
         "Make random changes to the training dataset."
-        train_data = self.orig_data['train']['X'].copy()
+        if self.orig_data is None:
+            self.orig_data = copy.deepcopy(self.data['train'])
+
+        train_data = self.orig_data['X'].copy()
 
         flip_idx = rng.choice(self.nsamples, self.nsamples // 4, replace=False)
         train_data[flip_idx] = np.flip(train_data[flip_idx], 0)
@@ -29,7 +32,7 @@ class Dataset:
         train_data[flip_idx] = np.flip(train_data[flip_idx], 1)
 
         rot_idx = rng.choice(self.nsamples, self.nsamples // 8, replace=False)
-        train_data[rot_idx] = np.array([transform.rotate(x, rng.normal(0.0, 15)) for x in train_data[rot_idx]])
+        train_data[rot_idx] = np.array([transform.rotate(x, rng.uniform(-30, 30)) for x in train_data[rot_idx]])
 
         contrast_idx = rng.choice(self.nsamples, self.nsamples // 16, replace=False)
         train_data[contrast_idx] = np.clip(
@@ -46,24 +49,7 @@ class Dataset:
             1.0
         ).T
 
-        noise_idx = rng.choice(self.nsamples, self.nsamples // 2, replace=False)
-        train_data[noise_idx] = np.clip(
-            train_data[noise_idx] + rng.laplace(0, 0.1, size=train_data[noise_idx].shape), 0.0, 1.0)
-
         self.data['train']['X'] = train_data
-
-        # import matplotlib.pyplot as plt
-        # import math
-        # idx = rng.choice(len(train_data), 30, replace=False)
-        # batch_size = len(idx)
-        # nrows = math.floor(math.sqrt(batch_size))
-        # ncols = batch_size // nrows
-        # fig, axes = plt.subplots(nrows, ncols)
-        # for i, ax in enumerate(axes.flatten()):
-        #     if i < batch_size:
-        #         ax.imshow(self.data['train']['X'][idx[i]], cmap='binary')
-        # plt.savefig("perturb.png", dpi=320)
-        # plt.clf()
 
 
 def hfdataset_to_dict(hfdataset):

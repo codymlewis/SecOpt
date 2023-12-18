@@ -14,10 +14,26 @@ def secadam(
     return optax.adam(learning_rate, b1, b2, eps=0.0, eps_root=eps**2)
 
 
+def dpsecadam(
+    learning_rate: optax.ScalarOrSchedule,
+    b1: float = 0.9,
+    b2: float = 0.999,
+    eps: float = 1e-8,
+    clip_threshold: float = 1.0,
+    noise_scale: float = 0.01,
+    seed=0,
+) -> optax.GradientTransformation:
+    return optax.chain(
+        clip(clip_threshold),
+        add_noise(noise_scale, seed),
+        secadam(learning_rate, b1, b2, eps),
+    )
+
+
 def dpsgd(
     learning_rate: optax.ScalarOrSchedule,
     clip_threshold: float = 1.0,
-    noise_scale: float = 0.1,
+    noise_scale: float = 0.01,
     seed=0,
 ) -> optax.GradientTransformation:
     return optax.chain(

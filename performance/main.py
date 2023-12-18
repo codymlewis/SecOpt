@@ -1,4 +1,5 @@
 import argparse
+import functools
 import math
 import os
 import numpy as np
@@ -32,22 +33,32 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--pgd', action="store_true", help="Perform projected gradient descent hardening.")
     parser.add_argument('-pr', '--participation-rate', type=float, default=1.0,
                         help="Participation rate of clients in each round.")
+    parser.add_argument('-ct', '--clip-threshold', type=float, default=1.0,
+                        help="Clip gradients to this maximum norm if DP optimisation")
+    parser.add_argument('-ns', '--noise-scale', type=float, default=0.1,
+                        help="Scale of noise applied to gradient if DP optimisation")
     args = parser.parse_args()
 
     print(f"Training with {vars(args)}")
     rng = np.random.default_rng(args.seed)
     dataset = getattr(load_datasets, args.dataset)()
     model = getattr(models, args.model)(dataset.nclasses)
+    if "dp" in args.optimiser:
+        opt_fn = functools.partial(
+            utils.find_optimiser(args.optimiser), clip_threshold=args.clip_threshold, noise_scale=args.noise_scale)
+    else:
+        opt_fn = utils.find_optimiser(args.optimiser)
+
     global_state = train_state.TrainState.create(
         apply_fn=model.apply,
         params=model.init(jax.random.PRNGKey(args.seed), dataset['train']['X'][:1]),
-        tx=utils.find_optimiser(args.server_optimiser)(args.server_learning_rate),
+        tx=opt_fn(args.server_learning_rate),
     )
     client_states = [
             train_state.TrainState.create(
                 apply_fn=model.apply,
                 params=model.init(jax.random.PRNGKey(args.seed), dataset['train']['X'][:1]),
-                tx=utils.find_optimiser(args.client_optimiser)(args.client_learning_rate),
+                tx=opt_fn(args.client_learning_rate),
             )
             for _ in range(args.clients)
         ]

@@ -33,9 +33,16 @@ def find_update(global_state, client_state, client_learning_rate):
 
 @jax.jit
 def find_secadam_update(client_state, b1=0.9, b2=0.999, eps=1e-8):
-    count = client_state.opt_state[0].count
-    mu_hat = optax.bias_correction(client_state.opt_state[0].mu, b1, count)
-    nu_hat = optax.bias_correction(client_state.opt_state[0].nu, b2, count)
+    opt_index = -1
+    for i, ostate in enumerate(client_state.opt_state):
+        if isinstance(ostate, optax.ScaleByAdamState):
+            opt_index = i
+    if opt_index == -1:
+        raise AttributeError("Could not find adam state in the optimiser")
+
+    count = client_state.opt_state[opt_index].count
+    mu_hat = optax.bias_correction(client_state.opt_state[opt_index].mu, b1, count)
+    nu_hat = optax.bias_correction(client_state.opt_state[opt_index].nu, b2, count)
     # In some cases you may need to check count > 1 to apply the following line
     nu_hat = jax.tree_util.tree_map(lambda n: n + eps**2, nu_hat)
     return mu_hat, nu_hat

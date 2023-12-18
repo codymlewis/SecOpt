@@ -209,6 +209,10 @@ if __name__ == "__main__":
                         help="Choose an initialisation fuction for the dummy data [default: uniform].")
     parser.add_argument('--l1-reg', type=float, default=0.0, help="Influence of L1 total variation in the attack")
     parser.add_argument('--l2-reg', type=float, default=1e-6, help="Influence of L2 total variation in the attack")
+    parser.add_argument('--clip-threshold', type=float, default=1.0,
+                        help="Clip gradients to this maximum norm if DP optimisation")
+    parser.add_argument('--noise-scale', type=float, default=0.1,
+                        help="Scale of noise applied to gradient if DP optimisation")
     args = parser.parse_args()
 
     train_args = {
@@ -223,18 +227,20 @@ if __name__ == "__main__":
         init_params = safeflax.load_file(args.file)
     else:
         init_params = model.init(jax.random.PRNGKey(train_args['seed'], dataset['train'][:1]))
+    if args.optimiser:
+        if "dp" in args.optimiser:
+            opt = common.find_optimiser(args.optimiser)(
+                float(train_args["learning_rate"]), clip_threshold=args.clip_threshold, noise_scale=args.noise_scale)
+        else:
+            opt = common.find_optimiser(args.optimiser)(float(train_args["learning_rate"]))
+    else:
+        opt = common.find_optimiser(train_args["optimiser"])(float(train_args["learning_rate"]))
     state = train_state.TrainState.create(
         apply_fn=model.apply,
         params=init_params,
-        tx=common.find_optimiser(train_args["optimiser"])(float(train_args["learning_rate"])),
+        tx=opt,
     )
 
-    if args.optimiser:
-        state = train_state.TrainState.create(
-            apply_fn=model.apply,
-            params=state.params,
-            tx=common.find_optimiser(args.optimiser)(float(train_args["learning_rate"])),
-        )
     if args.batch_size:
         train_args['batch_size'] = args.batch_size
 
@@ -243,7 +249,8 @@ if __name__ == "__main__":
         for k, v in train_args.items() if k in ["dataset", "model", "pgd"]
     }
     all_results['attack'] = [args.attack for _ in range(args.runs)]
-    all_results['optimiser'] = [args.optimiser for _ in range(args.runs)]
+    opt_name = f"{args.optimiser}_ct{args.clip_threshold}_ns{args.noise_scale}" if "dp" in args.optimiser else args.optimiser
+    all_results['optimiser'] = [opt_name for _ in range(args.runs)]
     all_results['batch_size'] = [args.batch_size for _ in range(args.runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
     if args.plot:
