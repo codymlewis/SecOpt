@@ -209,9 +209,9 @@ if __name__ == "__main__":
                         help="Choose an initialisation fuction for the dummy data [default: uniform].")
     parser.add_argument('--l1-reg', type=float, default=0.0, help="Influence of L1 total variation in the attack")
     parser.add_argument('--l2-reg', type=float, default=1e-6, help="Influence of L2 total variation in the attack")
-    parser.add_argument('--clip-threshold', type=float, default=1.0,
+    parser.add_argument('--clip-threshold', type=float, default=10.0,
                         help="Clip gradients to this maximum norm if DP optimisation")
-    parser.add_argument('--noise-scale', type=float, default=0.1,
+    parser.add_argument('--noise-scale', type=float, default=0.00001,
                         help="Scale of noise applied to gradient if DP optimisation")
     args = parser.parse_args()
 
@@ -280,11 +280,11 @@ if __name__ == "__main__":
         Z = jnp.concatenate(all_Zs, axis=0)
         idx = jnp.concatenate(all_idxs, axis=0)
         os.makedirs("plots", exist_ok=True)
-        print("Ground truth")
+        print("Making a plot of the ground truth")
         plot_image_array(
             dataset['train']['X'][idx], f"plots/{train_args['dataset']}_ground_truth.png"
         )
-        print("Attack images")
+        print("Making a plot of the attack images")
         plot_image_array(
             Z,
             "plots/{}_{}_{}_{}{}.png".format(

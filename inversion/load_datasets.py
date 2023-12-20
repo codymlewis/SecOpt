@@ -32,7 +32,7 @@ class Dataset:
         train_data[flip_idx] = np.flip(train_data[flip_idx], 1)
 
         rot_idx = rng.choice(self.nsamples, self.nsamples // 8, replace=False)
-        train_data[rot_idx] = np.array([transform.rotate(x, rng.uniform(-30, 30)) for x in train_data[rot_idx]])
+        train_data[rot_idx] = np.array([transform.rotate(x, rng.uniform(-15, 15)) for x in train_data[rot_idx]])
 
         contrast_idx = rng.choice(self.nsamples, self.nsamples // 16, replace=False)
         train_data[contrast_idx] = np.clip(

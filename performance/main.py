@@ -12,6 +12,12 @@ import models
 import utils
 
 
+def find_optimiser(opt_name, clip_threshold, noise_scale):
+    if "dp" in opt_name:
+        return functools.partial(utils.find_optimiser(opt_name), clip_threshold=clip_threshold, noise_scale=noise_scale)
+    return utils.find_optimiser(opt_name)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train neural network models for inversion attacks.")
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for random number generation operations.")
@@ -43,22 +49,17 @@ if __name__ == "__main__":
     rng = np.random.default_rng(args.seed)
     dataset = getattr(load_datasets, args.dataset)()
     model = getattr(models, args.model)(dataset.nclasses)
-    if "dp" in args.optimiser:
-        opt_fn = functools.partial(
-            utils.find_optimiser(args.optimiser), clip_threshold=args.clip_threshold, noise_scale=args.noise_scale)
-    else:
-        opt_fn = utils.find_optimiser(args.optimiser)
 
     global_state = train_state.TrainState.create(
         apply_fn=model.apply,
         params=model.init(jax.random.PRNGKey(args.seed), dataset['train']['X'][:1]),
-        tx=opt_fn(args.server_learning_rate),
+        tx=find_optimiser(args.server_optimiser, args.clip_threshold, args.noise_scale)(args.server_learning_rate),
     )
     client_states = [
             train_state.TrainState.create(
                 apply_fn=model.apply,
                 params=model.init(jax.random.PRNGKey(args.seed), dataset['train']['X'][:1]),
-                tx=opt_fn(args.client_learning_rate),
+                tx=find_optimiser(args.client_optimiser, args.clip_threshold, args.noise_scale)(args.client_learning_rate),
             )
             for _ in range(args.clients)
         ]

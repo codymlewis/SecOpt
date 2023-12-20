@@ -19,6 +19,6 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
     fi
 
     for model in ${models[@]}; do
-    	python train.py --epochs 100 --dataset $dataset --optimiser secadam --model $model --batch-size $batch_size --learning-rate $lr --pgd --perturb
+    	python train.py --epochs 100 --dataset $dataset --optimiser secadam --model $model --batch-size $batch_size --learning-rate $lr --pgd #--perturb
     done
 done

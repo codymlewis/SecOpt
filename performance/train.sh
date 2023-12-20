@@ -27,7 +27,7 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
             fi
             
             for ef in ${extra_flags[@]}; do
-                python main.py --dataset $dataset --optimiser $opt --model $model --batch-size $batch_size -slr $lr -clr $lr $ef
+                python main.py --dataset $dataset --client-optimiser $opt --model $model --batch-size $batch_size -slr $lr -clr $lr $ef
             done
         done
     done

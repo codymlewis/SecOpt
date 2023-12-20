@@ -49,6 +49,7 @@ if __name__ == "__main__":
             loss, state = update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
             loss_sum += loss
         pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
+    os.makedirs("checkpoints", exist_ok=True)
     safeflax.save_file(state.params, checkpoint_file)
     final_accuracy = common.accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size)
     print(f"Final accuracy: {final_accuracy:.3%}")
