@@ -21,9 +21,9 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
     for opt in "sgd" "dpsgd" "secadam" "dpsecadam"; do
         for model in ${models[@]}; do
             if [[ $opt == "dpsgd" ]] || [[ $opt == "dpsecadam" ]]; then
-                $extra_flags =("-ct 10 -ns 0.001" "-ct 5 -ns 0.001" "-ct 1 -ns 0.001" "-ct 10 -ns 0.005" "-ct 5 -ns 0.005" "-ct 1 -ns 0.005" "-ct 10 -ns 0.01" "-ct 5 -ns 0.01" "-ct 1 -ns 0.01")
+                extra_flags=("-ct 10 -ns 0.001" "-ct 5 -ns 0.001" "-ct 1 -ns 0.001" "-ct 10 -ns 0.005" "-ct 5 -ns 0.005" "-ct 1 -ns 0.005" "-ct 10 -ns 0.01" "-ct 5 -ns 0.01" "-ct 1 -ns 0.01")
             else
-                $extra_flags =("")
+                extra_flags=("")
             fi
             
             for ef in ${extra_flags[@]}; do
