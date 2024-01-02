@@ -22,7 +22,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train neural network models for inversion attacks.")
     parser.add_argument('-s', '--seed', type=int, default=42, help="Seed for random number generation operations.")
     parser.add_argument('-c', '--clients', type=int, default=10, help="Number of clients to train.")
-    parser.add_argument('-r', '--rounds', type=int, default=10, help="Number of rounds to train for.")
+    parser.add_argument('-r', '--rounds', type=int, default=3000, help="Number of rounds to train for.")
     parser.add_argument('-e', '--epochs', type=int, default=1, help="Number of epochs to train for each round.")
     parser.add_argument('-st', '--steps', type=int, default=1, help="Number of steps to train for each epoch.")
     parser.add_argument('-b', '--batch-size', type=int, default=128, help="Training and evaluation batch size.")
