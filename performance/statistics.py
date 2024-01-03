@@ -1,11 +1,9 @@
-from scipy import stats
 import pandas as pd
 
 
 if __name__ == "__main__":
-    df = pd.read_csv("ablation_results.csv")
-    act_vals = []
-    for act in df['activation'].unique():
-        act_vals.append(df[df['activation'] == act]['ssim'].to_numpy())
-        print(f"Activation {act}, mean SSIM {act_vals[-1].mean()}")
-    print(stats.f_oneway(*act_vals))
+    df = pd.read_csv("results.csv")
+    df = df.drop(columns=["seed", "clients", "rounds", "epochs", "steps", "batch_size"])
+    df = df.groupby(['dataset', 'model', 'pgd', 'server_optimiser', 'client_optimiser']).mean()
+    df = df.reset_index()
+    print(df.style.to_latex(position_float='centering'))
