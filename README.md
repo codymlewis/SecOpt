@@ -9,7 +9,7 @@ With the rapid advancements in machine learning as well as an increase in the aw
 ## Running the Experiments
 
 **Requirements:**
-- Python 3.10+
+- Python 3.11+
 - Bash
 - Python poetry
 
