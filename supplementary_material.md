@@ -8,11 +8,11 @@ Fashion-MNIST https://arxiv.org/abs/1708.07747 was created as a drop-in replacem
 
 ## CIFAR-10
 
-CIFAR-10 https://www.cs.toronto.edu/ kriz/cifar.html is an object classification dataset composed of 60,000 RGB color images with $32 \times 32$ pixels, with 50,000 samples in the training dataset and 10,000 in the testing dataset. It was created as a subset of the tiny images dataset (The tiny images dataset was formally withdrawn as specified at https://groups.csail.mit.edu/vision/TinyImages/), where reliable class labels are ensured for improved learning quality. The dataset has 10 classes, where each sample is labeled with the one it is an image of (e.g. cat, ship, airplane, etc.).
+CIFAR-10 https://www.cs.toronto.edu/~kriz/cifar.html is an object classification dataset composed of 60,000 RGB color images with $32 \times 32$ pixels, with 50,000 samples in the training dataset and 10,000 in the testing dataset. It was created as a subset of the tiny images dataset (The tiny images dataset was formally withdrawn as specified at https://groups.csail.mit.edu/vision/TinyImages/), where reliable class labels are ensured for improved learning quality. The dataset has 10 classes, where each sample is labeled with the one it is an image of (e.g. cat, ship, airplane, etc.).
 
 ## CIFAR-100
 
-The CIFAR-100 dataset https://www.cs.toronto.edu/ kriz/cifar.html is the same subset of the 80 million tiny images dataset as the CIFAR-10 dataset, except it is divided into 100 classes instead of 10. This task of object detection provides an even more complex task of image classification.
+The CIFAR-100 dataset https://www.cs.toronto.edu/~kriz/cifar.html is the same subset of the 80 million tiny images dataset as the CIFAR-10 dataset, except it is divided into 100 classes instead of 10. This task of object detection provides an even more complex task of image classification.
 
 ## SVHN
 SVHN http://ufldl.stanford.edu/housenumbers/nips2011_housenumbers.pdf is a digit recognition dataset similar to the MNIST dataset https://ieeexplore.ieee.org/document/726791, while providing a significantly harder learning task by using images obtained from real-world house numbers with various natural scenes. We use the cropped digits format of the dataset, which is composed of 99289 RGB color images with $32 \times 32$ pixels, where training dataset contains 73257 samples and the testing dataset contains 26032 samples. Each sample is labeled with one of 10 classes stating which digit is contained in the respective image.
@@ -106,60 +106,45 @@ In this section, we present the experiment results for other neural networks mod
 
 Firstly, the inversion results:
 
-\begin{table}[t]
-\centering
-\caption{Quantitative Results for Inversion Mitigation. Boldface is used to indicate the best mean result for each dataset and model pair (prioritizing SSIM).}
-\label{table:inversion_results}
-\begin{tabular}{lllll}
-\textbf{Dataset} | \textbf{Model} | \textbf{Algorithm} | \textbf{PSNR} | \textbf{SSIM} |
-|FMNIST} | \multirow{4}{*}{CNN} | FedAVG | 29.738416 | 0.897489 |
-| | | SecAdam | 21.19201 | 0.814693 |
-| | | DP-FedAVG | 29.190927 | 0.890502 |
-| | | \textbf{DP-SecAdam} | \textbf{14.026205} | \textbf{0.408845} |
-| | \multirow{4}{*}{LeNet} | FedAVG | 13.920023 | 0.444128 |
-| | | SecAdam | 12.415970 | 0.366750 |
-| | | DP-FedAVG | 13.318168 | 0.437378 |
-| | | \textbf{DP-SecAdam} | \textbf{11.772718} | \textbf{0.327700} |
-|CIFAR-10} | \multirow{4}{*}{ConvNeXt} | FedAVG | 15.436438 | 0.221006 |
-| | | \textbf{SecAdam} | \textbf{14.784390} | \textbf{0.214058} |
-| | | DP-FedAVG | 16.082597 | 0.223207 |
-| | | DP-SecAdam | 15.960336 | 0.220189 |
-| | \multirow{4}{*}{ResNetV2} | FedAVG | 21.036047 | 0.586164 |
-| | | SecAdam | \textbf{15.629574} | 0.377895 |
-| | | DP-FedAVG | 20.839558 | 0.581643 |
-| | | \textbf{DP-SecAdam} | 16.629871 | \textbf{0.366190} |
-|CIFAR-100} | \multirow{4}{*}{ConvNeXt} | FedAVG | 20.674564 | 0.608759 |
-| | | SecAdam | 15.563332 | 0.339200 |
-| | | DP-FedAVG | 20.203714 | 0.588081 |
-| | | \textbf{DP-SecAdam} | \textbf{13.304353} | \textbf{0.198929} |
-| | \multirow{4}{*}{ResNetV2} | FedAVG | 22.856579 | 0.671467 |
-| | | SecAdam | 17.699221 | 0.447489 |
-| | | DP-FedAVG | 22.795465 | 0.660385 |
-| | | \textbf{DP-SecAdam} | \textbf{17.217108} | \textbf{0.322811} |
-|SVHN} | \multirow{4}{*}{ConvNeXt} | FedAVG | 20.765010 | 0.452886 |
-| | | SecAdam | 20.866547 | 0.409335 |
-| | | DP-FedAVG | \textbf{20.104082} | 0.432747 |
-| | | \textbf{DP-SecAdam} | 20.680610 | \textbf{0.389017} |
-| | \multirow{4}{*}{ResNetV2} | FedAVG | \textbf{20.251983} | 0.510444 |
-| | | SecAdam | 20.896899 | 0.445564 |
-| | | DP-FedAVG | 20.347046 | 0.490766 |
-| | | \textbf{DP-SecAdam} | 20.785360 | \textbf{0.430134} |
-|Tiny-Imagenet} | \multirow{4}{*}{ConvNeXt} | FedAVG | 15.915026 | 0.305981 |
-| | | SecAdam | 14.720854 | 0.217874 |
-| | | DP-FedAVG | 15.797731 | 0.276312 |
-| | | \textbf{DP-SecAdam} | \textbf{13.202826} | \textbf{0.143757} |
-| | \multirow{4}{*}{ResNetV2} | FedAVG | 20.758510 | 0.523932 |
-| | | SecAdam | 15.524894 | 0.243581 |
-| | | DP-FedAVG | 20.855816 | 0.525167 |
-| | | \textbf{DP-SecAdam} | \textbf{13.720603} | \textbf{0.170607} |
-\end{tabular}
-\end{table}
+| **Dataset** | **Algorithm** | **PSNR** | **SSIM** |
+|-----|-----|-----|-----|
+| FMNIST | FedAVG | 13.920023 | 0.444128 |
+| | SecAdam | 12.415970 | 0.366750 |
+| | DP-FedAVG | 13.318168 | 0.437378 |
+| | **DP-SecAdam** | **11.772718** | **0.327700** |
+| CIFAR-10 | FedAVG | 15.436438 | 0.221006 |
+| | **SecAdam** | **14.784390** | **0.214058** |
+| | DP-FedAVG | 16.082597 | 0.223207 |
+| | DP-SecAdam | 15.960336 | 0.220189 |
+| CIFAR-100 | FedAVG | 20.674564 | 0.608759 |
+| | SecAdam | 15.563332 | 0.339200 |
+| | DP-FedAVG | 20.203714 | 0.588081 |
+| | **DP-SecAdam** | **13.304353** | **0.198929** |
+| SVHN | FedAVG | 20.765010 | 0.452886 |
+| | SecAdam | 20.866547 | 0.409335 |
+| | DP-FedAVG | **20.104082** | 0.432747 |
+| | **DP-SecAdam** | 20.680610 | **0.389017** |
+| Tiny-Imagenet | FedAVG | 15.915026 | 0.305981 |
+| | SecAdam | 14.720854 | 0.217874 |
+| | DP-FedAVG | 15.797731 | 0.276312 |
+| | **DP-SecAdam** | **13.202826** | **0.143757** |
 
 While SecAdam and DP-SecAdam always attain better results in terms of reduced SSIM, we find that there are some cases where the attack does not perform well regardless of the training technique. These cases appear to be related to the the model being trained, namely, they only occur when ConvNeXt and LeNet models are trained. This correlates with our observation in the inversion ablation above where we see that different layer compositions in neural networks lead to different attack performance. Furthermore, there are other works in the literature that have made similar observations, e.g. Wei et al. https://link.springer.com/chapter/10.1007/978-3-030-58951-6_27. However, we note that the training models that are resistant to inversion attacks are not completely effective. For instance, in the case of CIFAR-100 with ConvNeXt. There are cases where the training conditions such as the dataset and the global batch size lead to sufficient conditions for effective attack despite model resistance. This further highlights the benefit of our algorithm, which improves resistance to gradient inversion in all the cases.
 
 Next the performance results:
 
-
+| **Dataset** | **Algorithm** | **Accuracy** | **Loss** |
+|-----|-----|-----|-----|
+| FMNIST | FedAVG | 79.4980% | 0.581885 |
+| | SecAdam | 90.1820% | 0.284222 |
+| CIFAR-10 | FedAVG | 39.2280% | 1.723099 |
+| | SecAdam | 56.7180% | 1.236273 |
+| CIFAR-100 | FedAVG | 2.6500% | 4.553232 |
+| | SecAdam | 15.9940% | 3.689483 |
+| SVHN | FedAVG | 19.1687% | 2.239945 |
+| | SecAdam | 63.2583% | 1.140039 |
+| Tiny-ImageNet | FedAVG | 0.7740% | 5.293410 |
+| | SecAdam | 2.2600% | 5.025628 |
 
 The results here hold the same pattern as with the models used in the main paper.
 
