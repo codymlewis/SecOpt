@@ -4,27 +4,27 @@ In this section we provide brief descriptions of the datasets that we have used 
 
 ## Fashion-MNIST
 
-Fashion-MNIST \cite{xiao2017fashion} was created as a drop-in replacement for the immensely popular MNIST dataset \cite{lecun1998gradient}, and has equivalent structure while providing a more complex learning task. The dataset is composed of 70 000 grayscale images with $28 \times 28$ pixels, where each image belongs to one of ten classes, in this case denoting the item of clothing the image is made of (e.g. trouser or dress). 60,000 of these images are in the training dataset, and the other 10,000 in the testing dataset.
+Fashion-MNIST https://arxiv.org/abs/1708.07747 was created as a drop-in replacement for the immensely popular MNIST dataset https://ieeexplore.ieee.org/document/726791, and has equivalent structure while providing a more complex learning task. The dataset is composed of 70 000 grayscale images with $28 \times 28$ pixels, where each image belongs to one of ten classes, in this case denoting the item of clothing the image is made of (e.g. trouser or dress). 60,000 of these images are in the training dataset, and the other 10,000 in the testing dataset.
 
 ## CIFAR-10
 
-CIFAR-10 \cite{krizhevsky2009learning} is an object classification dataset composed of 60,000 RGB color images with $32 \times 32$ pixels, with 50,000 samples in the training dataset and 10,000 in the testing dataset. It was created as a subset of the tiny images dataset\footnote{The tiny images dataset was formally withdrawn as specified at \url{https://groups.csail.mit.edu/vision/TinyImages/}}, where reliable class labels are ensured for improved learning quality. The dataset has 10 classes, where each sample is labeled with the one it is an image of (e.g. cat, ship, airplane, etc.).
+CIFAR-10 https://www.cs.toronto.edu/ kriz/cifar.html is an object classification dataset composed of 60,000 RGB color images with $32 \times 32$ pixels, with 50,000 samples in the training dataset and 10,000 in the testing dataset. It was created as a subset of the tiny images dataset (The tiny images dataset was formally withdrawn as specified at https://groups.csail.mit.edu/vision/TinyImages/), where reliable class labels are ensured for improved learning quality. The dataset has 10 classes, where each sample is labeled with the one it is an image of (e.g. cat, ship, airplane, etc.).
 
 ## CIFAR-100
 
-The CIFAR-100 dataset \cite{krizhevsky2009learning} is the same subset of the 80 million tiny images dataset as the CIFAR-10 dataset, except it is divided into 100 classes instead of 10. This task of object detection provides an even more complex task of image classification.
+The CIFAR-100 dataset https://www.cs.toronto.edu/ kriz/cifar.html is the same subset of the 80 million tiny images dataset as the CIFAR-10 dataset, except it is divided into 100 classes instead of 10. This task of object detection provides an even more complex task of image classification.
 
 ## SVHN
-SVHN \cite{netzer2011svhn} is a digit recognition dataset similar to the MNIST dataset \cite{lecun1998gradient}, while providing a significantly harder learning task by using images obtained from real-world house numbers with various natural scenes. We use the cropped digits format of the dataset, which is composed of 99289 RGB color images with $32 \times 32$ pixels, where training dataset contains 73257 samples and the testing dataset contains 26032 samples. Each sample is labeled with one of 10 classes stating which digit is contained in the respective image.
+SVHN http://ufldl.stanford.edu/housenumbers/nips2011_housenumbers.pdf is a digit recognition dataset similar to the MNIST dataset https://ieeexplore.ieee.org/document/726791, while providing a significantly harder learning task by using images obtained from real-world house numbers with various natural scenes. We use the cropped digits format of the dataset, which is composed of 99289 RGB color images with $32 \times 32$ pixels, where training dataset contains 73257 samples and the testing dataset contains 26032 samples. Each sample is labeled with one of 10 classes stating which digit is contained in the respective image.
 
 ## Tiny-ImageNet
 
-The Tiny-ImageNet dataset~\cite{chrabaszcz2017downsampled} is a variant of the ImageNet dataset~\cite{deng2009imagenet} that has been downsampled to a resolution of $64 \times 64$ RGB images. Where the original ImageNet is composed of images scraped from the Internet that represent 200 classes, from important nouns from the WordNet hierarchy. On average each class is represented by 1000 images. This presents a large and complex task.
+The Tiny-ImageNet dataset http://arxiv.org/abs/1707.08819 is a variant of the ImageNet dataset https://ieeexplore.ieee.org/document/5206848 that has been downsampled to a resolution of $64 \times 64$ RGB images. Where the original ImageNet is composed of images scraped from the Internet that represent 200 classes, from important nouns from the WordNet hierarchy. On average each class is represented by 1000 images. This presents a large and complex task.
 
 
 # Projected Gradient Descent
 
-Unless stated otherwise, we have used the projected gradient descent algorithm \cite{goodfellow2014explaining} as an adversarial training step each epoch of training in each experiment. For this algorithm, we set the maximum amount of perturbation in $L_infty$ norm, $\epsilon = \frac{4}{255}$, the learning rate, $\eta_{pgd} = \frac{2 \epsilon}{3}$, and the number of steps, $S = 3$. The specific algorithm we have used is demonstrated below.
+Unless stated otherwise, we have used the projected gradient descent algorithm https://arxiv.org/abs/1412.6572 as an adversarial training step each epoch of training in each experiment. For this algorithm, we set the maximum amount of perturbation in $L_infty$ norm, $\epsilon = \frac{4}{255}$, the learning rate, $\eta_{pgd} = \frac{2 \epsilon}{3}$, and the number of steps, $S = 3$. The specific algorithm we have used is demonstrated below.
 
 ```go
 function PGD(objective function evaluated with the current model F(theta; x, y), maximum amount of perturbation epsilon, learning rate eta, number of steps S, minibatch samples X, minibatch labels y) {
@@ -74,7 +74,7 @@ Firstly a comparison of activation functions,
 
 then a comparison of activation functions with more training and larger learning rate,
 
-![Comparison of activation functions with more training and larger learning rate](images/30 Epoch Activations.png)
+![Comparison of activation functions with more training and larger learning rate](images/30_Epoch_Activations.png)
 
 then a comparison of usage of normalization and pooling,
 
@@ -97,12 +97,12 @@ A summary plot of our results is shown in images at the start of this section. T
 
 We also performed the same experiments of attacks on the same trained models, but against a gradient computed using a single random training data sample. The same general patterns arise in this case, although, successful cases of inversion tend to attain improved results, and the choice of activation function becoming more significant, with tanh and leaky ReLU being significantly more  susceptible to gradient inversion.
 
-Additionally, we performed our same experiments using differing initialization functions on the dummy data. Namely, instead of using uniform random generation, we use repeated pattern~\cite{wei2020framework} where a randomly generated pattern is tiled into the starting image, and solid color~\cite{wei2020framework}, which as the name suggests, fills the entire image with a single color, in this case, red. We found that, with the repeated pattern initialization, the attack was more effective against models that use pooling, especially with average pooling (with a relatively small window size) and ELU activation where it achieves 0.531 and 0.469 SSIM, with and without normalization respectively. We see that solid color initialization does not improve attack performance, and in fact often reduces it.
+Additionally, we performed our same experiments using differing initialization functions on the dummy data. Namely, instead of using uniform random generation, we use repeated pattern https://link.springer.com/chapter/10.1007/978-3-030-58951-6_27 where a randomly generated pattern is tiled into the starting image, and solid color https://link.springer.com/chapter/10.1007/978-3-030-58951-6_27, which as the name suggests, fills the entire image with a single color, in this case, red. We found that, with the repeated pattern initialization, the attack was more effective against models that use pooling, especially with average pooling (with a relatively small window size) and ELU activation where it achieves 0.531 and 0.469 SSIM, with and without normalization respectively. We see that solid color initialization does not improve attack performance, and in fact often reduces it.
 
 
 # Experiment Results with Other Models
 
-In this section, we present the experiment results for other neural networks models, namely LeNet for the Fashion-MNIST (FMNIST) dataset and ConvNeXt~\cite{liu2022convnet} for the other datasets. Again, each of the batch normalization layers were replaced with layer normalization following the observations made in~\cite{du2022rethinking}.
+In this section, we present the experiment results for other neural networks models, namely LeNet for the Fashion-MNIST (FMNIST) dataset and ConvNeXt http://arxiv.org/abs/2201.03545 for the other datasets. Again, each of the batch normalization layers were replaced with layer normalization following the observations made in https://arxiv.org/abs/2210.03277.
 
 Firstly, the inversion results:
 
@@ -155,7 +155,7 @@ Firstly, the inversion results:
 \end{tabular}
 \end{table}
 
-While SecAdam and DP-SecAdam always attain better results in terms of reduced SSIM, we find that there are some cases where the attack does not perform well regardless of the training technique. These cases appear to be related to the the model being trained, namely, they only occur when ConvNeXt and LeNet models are trained. This correlates with our observation in the inversion ablation above where we see that different layer compositions in neural networks lead to different attack performance. Furthermore, there are other works in the literature that have made similar observations, e.g. Wei et al.~\cite{wei2020framework}. However, we note that the training models that are resistant to inversion attacks are not completely effective. For instance, in the case of CIFAR-100 with ConvNeXt. There are cases where the training conditions such as the dataset and the global batch size lead to sufficient conditions for effective attack despite model resistance. This further highlights the benefit of our algorithm, which improves resistance to gradient inversion in all the cases.
+While SecAdam and DP-SecAdam always attain better results in terms of reduced SSIM, we find that there are some cases where the attack does not perform well regardless of the training technique. These cases appear to be related to the the model being trained, namely, they only occur when ConvNeXt and LeNet models are trained. This correlates with our observation in the inversion ablation above where we see that different layer compositions in neural networks lead to different attack performance. Furthermore, there are other works in the literature that have made similar observations, e.g. Wei et al. https://link.springer.com/chapter/10.1007/978-3-030-58951-6_27. However, we note that the training models that are resistant to inversion attacks are not completely effective. For instance, in the case of CIFAR-100 with ConvNeXt. There are cases where the training conditions such as the dataset and the global batch size lead to sufficient conditions for effective attack despite model resistance. This further highlights the benefit of our algorithm, which improves resistance to gradient inversion in all the cases.
 
 Next the performance results:
 
@@ -165,7 +165,7 @@ The results here hold the same pattern as with the models used in the main paper
 
 # SecLion
 
-Since moment based updates confuse gradient inversion as proven in Section IV, we also propose a secure form of the Lion optimization algorithm~\cite{chen2023symbolic} at the client level in federated learning. This is given in the algorithm below. While this algorithm only uses a single moment value, and thus the gradient is separable using prior moments, we find that the usage of the sign function in the update enables privacy to be maintained. We followed a process similar to SecAdam, except in place of the second order moment, we generated random positive values. This enables the same gradient inseparability properties as with SecAdam, without changing the results attained from the algorithm since $\text{sign}(x) = \text{sign}(\frac{x}{y}), y > 0$.
+Since moment based updates confuse gradient inversion as proven in Section IV, we also propose a secure form of the Lion optimization algorithm https://arxiv.org/abs/2302.06675 at the client level in federated learning. This is given in the algorithm below. While this algorithm only uses a single moment value, and thus the gradient is separable using prior moments, we find that the usage of the sign function in the update enables privacy to be maintained. We followed a process similar to SecAdam, except in place of the second order moment, we generated random positive values. This enables the same gradient inseparability properties as with SecAdam, without changing the results attained from the algorithm since $\text{sign}(x) = \text{sign}(\frac{x}{y}), y > 0$.
 
 ```go
 procedure SecLion(initial model theta[0], number of rounds R) {
@@ -311,7 +311,7 @@ Then the results showing the performance of the DP-SecAdam algorithm:
 
 # iDLG and CPL Attack Results
 
-Results of the experiments using the iDLG~\cite{zhao2020idlg} and CPL~\cite{wei2020framework} gradient inversion attacks are shown in the table below.
+Results of the experiments using the iDLG https://arxiv.org/abs/2001.02610 and CPL https://link.springer.com/chapter/10.1007/978-3-030-58951-6_27 gradient inversion attacks are shown in the table below.
 
 \begin{table}
 \centering
