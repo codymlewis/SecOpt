@@ -84,7 +84,7 @@ and finally a comparison of different attack hyperparameters,
 
 ![Comparison of different attack hyperparameters](images/Full.png)
 
-In our experiments, we found that that different neural networks were more or less susceptible to inversion attacks according to a number of hyperparameters such as layer types and activation functions. However, their precise effects remain ambiguous. In this section, we have performed an empirical study comparing the impact of those hyperparameters, and combinations thereof, upon the effectiveness of inversion attacks. In our experiments, we use a modified baseline CNN architecture containing three convolutional layers with $3 \time 3$ kernel shapes, $\{48, 32, 16\}$ channels respectively, same size padding, and ReLU activation. If there is normalization, it is applied prior to activation and pooling if present is done afterward. The model was trained over 10 full passes over the CIFAR-10 dataset with a mini batch size 8 using the SGD optimizer with learning rate 0.001. With this trained model, we performed the representation inversion attack 100 times each with unique seeds for random number generation. For the attack, we used the Lion optimizer with a learning rate of 0.01, starting with an uniformly random value from the range $[0, 1]$ for our recreated data. When the optimisation step of the attack was complete, we clipped the recreated data, $z$, into the range $[0, 1]$ with the element-wise function of $\min(\max(z, 0), 1)$. We also tuned the brightness of the recreated data to be the same as the average brightness of the standard test dataset for CIFAR-10, and took the best scoring among the tuned and untuned recreated data.
+In our experiments, we found that that different neural networks were more or less susceptible to inversion attacks according to a number of hyperparameters such as layer types and activation functions. However, their precise effects remain ambiguous. In this section, we have performed an empirical study comparing the impact of those hyperparameters, and combinations thereof, upon the effectiveness of inversion attacks. In our experiments, we use a modified baseline CNN architecture containing three convolutional layers with $3 \times 3$ kernel shapes, $\{48, 32, 16\}$ channels respectively, same size padding, and ReLU activation. If there is normalization, it is applied prior to activation and pooling if present is done afterward. The model was trained over 10 full passes over the CIFAR-10 dataset with a mini batch size 8 using the SGD optimizer with learning rate 0.001. With this trained model, we performed the representation inversion attack 100 times each with unique seeds for random number generation. For the attack, we used the Lion optimizer with a learning rate of 0.01, starting with an uniformly random value from the range $[0, 1]$ for our recreated data. When the optimisation step of the attack was complete, we clipped the recreated data, $z$, into the range $[0, 1]$ with the element-wise function of $\min(\max(z, 0), 1)$. We also tuned the brightness of the recreated data to be the same as the average brightness of the standard test dataset for CIFAR-10, and took the best scoring among the tuned and untuned recreated data.
 
 To measure the effectiveness of the attacks, we evaluated the structural similarity (SSIM) and peak signal-to-noise ratio (PSNR) between the recreated data and its ground truth. Since we found that there is a very strong correlation between SSIM and PSNR (Pearson correlation co-efficient of 0.747), we focused on the SSIM due to its more easily understandable rule of thumb that a value greater than 0.5 is recognizable as the original image.
 % Maybe worth noting that large single colour blocks can fool the rule of thumb
@@ -102,70 +102,66 @@ Additionally, we performed our same experiments using differing initialization f
 
 # Experiment Results with Other Models
 
-The two models used for the Fashion-MNIST (FMNIST) dataset were LeNet and a CNN\footnote{The CNN contains three convolutional layers with $3 \times 3$ kernels and 48, 32, and 16 filters respectively, each with ReLU activation and same shape padding.}, while for the other datasets, they were ResNetV2-50~\cite{he2016identity}, and ConvNeXt~\cite{liu2022convnet}, where each of the batch normalization layers were replaced with layer normalization following the observations made in~\cite{du2022rethinking}.
+In this section, we present the experiment results for other neural networks models, namely LeNet for the Fashion-MNIST (FMNIST) dataset and ConvNeXt~\cite{liu2022convnet} for the other datasets. Again, each of the batch normalization layers were replaced with layer normalization following the observations made in~\cite{du2022rethinking}.
 
-While SecAdam and DP-SecAdam always attain better results in terms of reduced SSIM, we find that there are some cases where the attack does not perform well regardless of the training technique. These cases appear to be related to the the model being trained, namely, they only occur when ConvNeXt and LeNet models are trained. This correlates with our observation in the Appendix~\ref{sec:inversion ablation} where we see that different layer compositions in neural networks lead to different attack performance. Furthermore, there are other works in the literature that have made similar observations, e.g. Wei et al.~\cite{wei2020framework}. However, we note that the training models that are resistant to inversion attacks are not completely effective. For instance, in the case of CIFAR-100 with ConvNeXt. There are cases where the training conditions such as the dataset and the global batch size lead to sufficient conditions for effective attack despite model resistance. This further highlights the benefit of our algorithm, which improves resistance to gradient inversion in all the cases.
+Firstly, the inversion results:
 
 \begin{table}[t]
 \centering
 \caption{Quantitative Results for Inversion Mitigation. Boldface is used to indicate the best mean result for each dataset and model pair (prioritizing SSIM).}
 \label{table:inversion_results}
 \begin{tabular}{lllll}
-\hline
-\textbf{Dataset} & \textbf{Model} & \textbf{Algorithm} & \textbf{PSNR} & \textbf{SSIM} \\
-\hline
-\multirow{8}{*}{FMNIST} & \multirow{4}{*}{CNN} & FedAVG & 29.738416 & 0.897489 \\
- & & SecAdam & 21.19201 & 0.814693 \\
- & & DP-FedAVG & 29.190927 & 0.890502 \\
- & & \textbf{DP-SecAdam} & \textbf{14.026205} & \textbf{0.408845} \\
-\cline{2-5}
- & \multirow{4}{*}{LeNet} & FedAVG & 13.920023 & 0.444128 \\
- & & SecAdam & 12.415970 & 0.366750 \\
- & & DP-FedAVG & 13.318168 & 0.437378 \\
- & & \textbf{DP-SecAdam} & \textbf{11.772718} & \textbf{0.327700} \\
-\hline
-\multirow{8}{*}{CIFAR-10} & \multirow{4}{*}{ConvNeXt} & FedAVG & 15.436438 & 0.221006 \\
- & & \textbf{SecAdam} & \textbf{14.784390} & \textbf{0.214058} \\
- & & DP-FedAVG & 16.082597 & 0.223207 \\
- & & DP-SecAdam & 15.960336 & 0.220189 \\
-\cline{2-5}
- & \multirow{4}{*}{ResNetV2} & FedAVG & 21.036047 & 0.586164 \\
- & & SecAdam & \textbf{15.629574} & 0.377895 \\
- & & DP-FedAVG & 20.839558 & 0.581643 \\
- & & \textbf{DP-SecAdam} & 16.629871 & \textbf{0.366190} \\
-\hline
-\multirow{8}{*}{CIFAR-100} & \multirow{4}{*}{ConvNeXt} & FedAVG & 20.674564 & 0.608759 \\
- & & SecAdam & 15.563332 & 0.339200 \\
- & & DP-FedAVG & 20.203714 & 0.588081 \\
- & & \textbf{DP-SecAdam} & \textbf{13.304353} & \textbf{0.198929} \\
-\cline{2-5}
- & \multirow{4}{*}{ResNetV2} & FedAVG & 22.856579 & 0.671467 \\
- & & SecAdam & 17.699221 & 0.447489 \\
- & & DP-FedAVG & 22.795465 & 0.660385 \\
- & & \textbf{DP-SecAdam} & \textbf{17.217108} & \textbf{0.322811} \\
-\hline
-\multirow{8}{*}{SVHN} & \multirow{4}{*}{ConvNeXt} & FedAVG & 20.765010 & 0.452886 \\
- & & SecAdam & 20.866547 & 0.409335 \\
- & & DP-FedAVG & \textbf{20.104082} & 0.432747 \\
- & & \textbf{DP-SecAdam} & 20.680610 & \textbf{0.389017} \\
-\cline{2-5}
- & \multirow{4}{*}{ResNetV2} & FedAVG & \textbf{20.251983} & 0.510444 \\
- & & SecAdam & 20.896899 & 0.445564 \\
- & & DP-FedAVG & 20.347046 & 0.490766 \\
- & & \textbf{DP-SecAdam} & 20.785360 & \textbf{0.430134} \\
-\hline
-\multirow{8}{*}{Tiny-Imagenet} & \multirow{4}{*}{ConvNeXt} & FedAVG & 15.915026 & 0.305981 \\
- & & SecAdam & 14.720854 & 0.217874 \\
- & & DP-FedAVG & 15.797731 & 0.276312 \\
- & & \textbf{DP-SecAdam} & \textbf{13.202826} & \textbf{0.143757} \\
-\cline{2-5}
- & \multirow{4}{*}{ResNetV2} & FedAVG & 20.758510 & 0.523932 \\
- & & SecAdam & 15.524894 & 0.243581 \\
- & & DP-FedAVG & 20.855816 & 0.525167 \\
- & & \textbf{DP-SecAdam} & \textbf{13.720603} & \textbf{0.170607} \\
-\hline
+\textbf{Dataset} | \textbf{Model} | \textbf{Algorithm} | \textbf{PSNR} | \textbf{SSIM} |
+|FMNIST} | \multirow{4}{*}{CNN} | FedAVG | 29.738416 | 0.897489 |
+| | | SecAdam | 21.19201 | 0.814693 |
+| | | DP-FedAVG | 29.190927 | 0.890502 |
+| | | \textbf{DP-SecAdam} | \textbf{14.026205} | \textbf{0.408845} |
+| | \multirow{4}{*}{LeNet} | FedAVG | 13.920023 | 0.444128 |
+| | | SecAdam | 12.415970 | 0.366750 |
+| | | DP-FedAVG | 13.318168 | 0.437378 |
+| | | \textbf{DP-SecAdam} | \textbf{11.772718} | \textbf{0.327700} |
+|CIFAR-10} | \multirow{4}{*}{ConvNeXt} | FedAVG | 15.436438 | 0.221006 |
+| | | \textbf{SecAdam} | \textbf{14.784390} | \textbf{0.214058} |
+| | | DP-FedAVG | 16.082597 | 0.223207 |
+| | | DP-SecAdam | 15.960336 | 0.220189 |
+| | \multirow{4}{*}{ResNetV2} | FedAVG | 21.036047 | 0.586164 |
+| | | SecAdam | \textbf{15.629574} | 0.377895 |
+| | | DP-FedAVG | 20.839558 | 0.581643 |
+| | | \textbf{DP-SecAdam} | 16.629871 | \textbf{0.366190} |
+|CIFAR-100} | \multirow{4}{*}{ConvNeXt} | FedAVG | 20.674564 | 0.608759 |
+| | | SecAdam | 15.563332 | 0.339200 |
+| | | DP-FedAVG | 20.203714 | 0.588081 |
+| | | \textbf{DP-SecAdam} | \textbf{13.304353} | \textbf{0.198929} |
+| | \multirow{4}{*}{ResNetV2} | FedAVG | 22.856579 | 0.671467 |
+| | | SecAdam | 17.699221 | 0.447489 |
+| | | DP-FedAVG | 22.795465 | 0.660385 |
+| | | \textbf{DP-SecAdam} | \textbf{17.217108} | \textbf{0.322811} |
+|SVHN} | \multirow{4}{*}{ConvNeXt} | FedAVG | 20.765010 | 0.452886 |
+| | | SecAdam | 20.866547 | 0.409335 |
+| | | DP-FedAVG | \textbf{20.104082} | 0.432747 |
+| | | \textbf{DP-SecAdam} | 20.680610 | \textbf{0.389017} |
+| | \multirow{4}{*}{ResNetV2} | FedAVG | \textbf{20.251983} | 0.510444 |
+| | | SecAdam | 20.896899 | 0.445564 |
+| | | DP-FedAVG | 20.347046 | 0.490766 |
+| | | \textbf{DP-SecAdam} | 20.785360 | \textbf{0.430134} |
+|Tiny-Imagenet} | \multirow{4}{*}{ConvNeXt} | FedAVG | 15.915026 | 0.305981 |
+| | | SecAdam | 14.720854 | 0.217874 |
+| | | DP-FedAVG | 15.797731 | 0.276312 |
+| | | \textbf{DP-SecAdam} | \textbf{13.202826} | \textbf{0.143757} |
+| | \multirow{4}{*}{ResNetV2} | FedAVG | 20.758510 | 0.523932 |
+| | | SecAdam | 15.524894 | 0.243581 |
+| | | DP-FedAVG | 20.855816 | 0.525167 |
+| | | \textbf{DP-SecAdam} | \textbf{13.720603} | \textbf{0.170607} |
 \end{tabular}
 \end{table}
+
+While SecAdam and DP-SecAdam always attain better results in terms of reduced SSIM, we find that there are some cases where the attack does not perform well regardless of the training technique. These cases appear to be related to the the model being trained, namely, they only occur when ConvNeXt and LeNet models are trained. This correlates with our observation in the inversion ablation above where we see that different layer compositions in neural networks lead to different attack performance. Furthermore, there are other works in the literature that have made similar observations, e.g. Wei et al.~\cite{wei2020framework}. However, we note that the training models that are resistant to inversion attacks are not completely effective. For instance, in the case of CIFAR-100 with ConvNeXt. There are cases where the training conditions such as the dataset and the global batch size lead to sufficient conditions for effective attack despite model resistance. This further highlights the benefit of our algorithm, which improves resistance to gradient inversion in all the cases.
+
+Next the performance results:
+
+
+
+The results here hold the same pattern as with the models used in the main paper.
 
 # SecLion
 
@@ -209,204 +205,151 @@ function ClientSecLion(client id i) {
 
 # The Impact of DP on Performance
 
-Performance results for various configurations of DP-FedAVG and DP-SecAdam are presented in Tables~\ref{table:dpfedavg_performance} and~\ref{table:dpsecadam_performance} respectively. We have used the same settings as our performance experiments presented in Section~\ref{sec:performance experiment}. We see that, in both cases, a larger clipping threshold and smaller noise scale lead to an improved performance, since gradients are altered less. Additionally, we can see that the DP setting used in Section~\ref{sec:inversion_mitigation} with clip threshold of 10 and noise scale of 0.001, has a minimal impact on performance in comparison to the algorithms without the DP.
+Performance results for various configurations of DP-FedAVG and DP-SecAdam are presented in tables below respectively. We have used the same settings as our performance experiments presented in Section VI.B. We see that, in both cases, a larger clipping threshold and smaller noise scale lead to an improved performance, since gradients are altered less. Additionally, we can see that the DP setting used in Section VI.A with clip threshold of 10 and noise scale of 0.001, has a minimal impact on performance in comparison to the algorithms without the DP.
 
-\begin{table}[t]
-\caption{Performance of the DP-FedAVG algorithm.}
-\label{table:dpfedavg_performance}
-\centering
-\begin{tabular}{lllll}
-\hline
-\textbf{Dataset} & \textbf{Clip} & \textbf{Noise Scale} & \textbf{Accuracy} & \textbf{Loss} \\
-\hline
-\multirow{8}{*}{FMNIST} & \multirow{3}{*}{1} & 0.001 & 47.3720\% & 1.709419 \\
- & & 0.005 & 47.2840\% & 1.709231 \\
- & & 0.01 & 47.1480\% & 1.709331 \\
-\cline{2-5}
- & \multirow{3}{*}{5} & 0.001 & 60.0860\% & 1.172241 \\
- & & 0.005 & 60.1020\% & 1.172059 \\
- & & 0.01 & 60.1140\% & 1.171890 \\
-\cline{2-5}
- & \multirow{3}{*}{10} & 0.001 & 62.1180\% & 1.117745 \\
- & & 0.005 & 62.1420\% & 1.117787 \\
- & & 0.01 & 62.1800\% & 1.117308 \\
-\hline
-\multirow{8}{*}{CIFAR-10} & \multirow{3}{*}{1} & 0.001 & 27.1980\% & 2.005755 \\
- & & 0.005 & 27.2060\% & 2.005672 \\
- & & 0.01 & 27.1020\% & 2.006054 \\
-\cline{2-5}
- & \multirow{3}{*}{5} & 0.001 & 38.9860\% & 1.674375 \\
- & & 0.005 & 38.9580\% & 1.674334 \\
- & & 0.01 & 38.9420\% & 1.675007 \\
-\cline{2-5}
- & \multirow{3}{*}{10} & 0.001 & 42.5560\% & 1.569141 \\
- & & 0.005 & 42.4700\% & 1.570619 \\
- & & 0.01 & 42.4360\% & 1.573452 \\
-\hline
-\multirow{8}{*}{CIFAR-100} & \multirow{3}{*}{1} & 0.001 & 1.1600\% & 4.691883 \\
- & & 0.005 & 1.1760\% & 4.691944 \\
- & & 0.01 & 1.1660\% & 4.691965 \\
-\cline{2-5}
- & \multirow{3}{*}{5} & 0.001 & 1.8360\% & 4.590714 \\
- & & 0.005 & 1.8200\% & 4.590707 \\
- & & 0.01 & 1.8360\% & 4.590710 \\
-\cline{2-5}
- & \multirow{3}{*}{10} & 0.001 & 2.8340\% & 4.555844 \\
- & & 0.005 & 2.8160\% & 4.555801 \\
- & & 0.01 & 2.8140\% & 4.555840 \\
-\hline
-\multirow{8}{*}{SVHN} & \multirow{3}{*}{1} & 0.001 & 19.4215\% & 2.230479 \\
- & & 0.005 & 19.4269\% & 2.230473 \\
- & & 0.01 & 19.4246\% & 2.230459 \\
-\cline{2-5}
- & \multirow{3}{*}{5} & 0.001 & 22.2833\% & 2.206530 \\
- & & 0.005 & 22.2887\% & 2.206541 \\
- & & 0.01 & 22.3018\% & 2.206536 \\
-\cline{2-5}
- & \multirow{3}{*}{10} & 0.001 & 25.1537\% & 2.179312 \\
- & & 0.005 & 25.1575\% & 2.179319 \\
- & & 0.01 & 25.1629\% & 2.179355 \\
-\hline
-\multirow{8}{*}{Tiny-ImageNet} & \multirow{3}{*}{1} & 0.001 & 0.5420\% & 5.426415 \\
- & & 0.005 & 0.5400\% & 5.426518 \\
- & & 0.01 & 0.5400\% & 5.426590 \\
-\cline{2-5}
- & \multirow{3}{*}{5} & 0.001 & 0.5800\% & 5.338731 \\
- & & 0.005 & 0.5820\% & 5.338745 \\
- & & 0.01 & 0.5880\% & 5.338814 \\
-\cline{2-5}
- & \multirow{3}{*}{10} & 0.001 & 5.700\% & 5.306952 \\
- & & 0.005 & 0.5680\% & 5.306988 \\
- & & 0.01 & 0.5820\% & 5.307005 \\
-\hline
-\end{tabular}
-\end{table}
+Firstly the results showing the performance of the DP-FedAVG algorithm:
+
+| **Dataset** | **Clip** | **Noise Scale** | **Accuracy** | **Loss** |
+|-----|-----|-----|-----|-----|
+| FMNIST | 1 | 0.001 | 47.3720\% | 1.709419 |
+| | | 0.005 | 47.2840\% | 1.709231 |
+| | | 0.01 | 47.1480\% | 1.709331 |
+| | 5 | 0.001 | 60.0860\% | 1.172241 |
+| | | 0.005 | 60.1020\% | 1.172059 |
+| | | 0.01 | 60.1140\% | 1.171890 |
+| | 10 | 0.001 | 62.1180\% | 1.117745 |
+| | | 0.005 | 62.1420\% | 1.117787 |
+| | | 0.01 | 62.1800\% | 1.117308 |
+| CIFAR-10 | 1 | 0.001 | 27.1980\% | 2.005755 |
+| | | 0.005 | 27.2060\% | 2.005672 |
+| | | 0.01 | 27.1020\% | 2.006054 |
+| | 5 | 0.001 | 38.9860\% | 1.674375 |
+| | | 0.005 | 38.9580\% | 1.674334 |
+| | | 0.01 | 38.9420\% | 1.675007 |
+| | 10 | 0.001 | 42.5560\% | 1.569141 |
+| | | 0.005 | 42.4700\% | 1.570619 |
+| | | 0.01 | 42.4360\% | 1.573452 |
+| CIFAR-100 | 1 | 0.001 | 1.1600\% | 4.691883 |
+| | | 0.005 | 1.1760\% | 4.691944 |
+| | | 0.01 | 1.1660\% | 4.691965 |
+| | 5 | 0.001 | 1.8360\% | 4.590714 |
+| | | 0.005 | 1.8200\% | 4.590707 |
+| | | 0.01 | 1.8360\% | 4.590710 |
+| | 10 | 0.001 | 2.8340\% | 4.555844 |
+| | | 0.005 | 2.8160\% | 4.555801 |
+| | | 0.01 | 2.8140\% | 4.555840 |
+| SVHN | 1 | 0.001 | 19.4215\% | 2.230479 |
+| | | 0.005 | 19.4269\% | 2.230473 |
+| | | 0.01 | 19.4246\% | 2.230459 |
+| | 5 | 0.001 | 22.2833\% | 2.206530 |
+| | | 0.005 | 22.2887\% | 2.206541 |
+| | | 0.01 | 22.3018\% | 2.206536 |
+| | 10 | 0.001 | 25.1537\% | 2.179312 |
+| | | 0.005 | 25.1575\% | 2.179319 |
+| | | 0.01 | 25.1629\% | 2.179355 |
+| Tiny-ImageNet | 1 | 0.001 | 0.5420\% | 5.426415 |
+| | | 0.005 | 0.5400\% | 5.426518 |
+| | | 0.01 | 0.5400\% | 5.426590 |
+| | 5 | 0.001 | 0.5800\% | 5.338731 |
+| | | 0.005 | 0.5820\% | 5.338745 |
+| | | 0.01 | 0.5880\% | 5.338814 |
+| | 10 | 0.001 | 5.700\% | 5.306952 |
+| | | 0.005 | 0.5680\% | 5.306988 |
+| | | 0.01 | 0.5820\% | 5.307005 |
 
 
-\begin{table}[t]
-\caption{Performance of the DP-SecAdam algorithm.}
-\label{table:dpsecadam_performance}
-\centering
-\begin{tabular}{lllll}
-\hline
-\textbf{Dataset} & \textbf{Clip} & \textbf{Noise Scale} & \textbf{Accuracy} & \textbf{Loss} \\
-\hline
-\multirow{8}{*}{FMNIST} & \multirow{3}{*}{1} & 0.001 & 77.3080\% & 0.644753 \\
- & & 0.005 & 76.5540\% & 0.653533 \\
- & & 0.01 & 76.0420\% & 0.674888 \\
-\cline{2-5}
- & \multirow{3}{*}{5} & 0.001 & 77.7800\% & 0.617428 \\
- & & 0.005 & 76.6320\% & 0.646476 \\
- & & 0.01 & 77.5400\% & 0.636257 \\
-\cline{2-5}
- & \multirow{3}{*}{10} & 0.001 & 77.9420\% & 0.609834 \\
- & & 0.005 & 76.3700\% & 0.647844 \\
- & & 0.01 & 76.1480\% & 0.664629 \\
-\hline
-\multirow{8}{*}{CIFAR-10} & \multirow{3}{*}{1} & 0.001 & 55.3620\% & 1.275040 \\
- & & 0.005 & 46.1580\% & 1.482428 \\
- & & 0.01 & 41.1620\% & 1.587422 \\
-\cline{2-5}
- & \multirow{3}{*}{5} & 0.001 & 61.5140\% & 1.261278 \\
- & & 0.005 & 53.5140\% & 1.326430 \\
- & & 0.01 & 50.4620\% & 1.398186 \\
-\cline{2-5}
- & \multirow{3}{*}{10} & 0.001 & 61.9720\% & 1.359992 \\
- & & 0.005 & 59.5580\% & 1.195372 \\
- & & 0.01 & 54.7280\% & 1.288318 \\
-\hline
-\multirow{8}{*}{CIFAR-100} & \multirow{3}{*}{1} & 0.001 & 16.5800\% & 3.584607 \\
- & & 0.005 & 10.5040\% & 4.003648 \\
- & & 0.01 & 7.5200\% & 4.208735 \\
-\cline{2-5}
- & \multirow{3}{*}{5} & 0.001 & 20.8060\% & 3.375324 \\
- & & 0.005 & 16.7580\% & 3.580310 \\
- & & 0.01 & 14.0040\% & 3.738741 \\
-\cline{2-5}
- & \multirow{3}{*}{10} & 0.001 & 21.5960\% & 3.315562 \\
- & & 0.005 & 18.7160\% & 3.472931 \\
- & & 0.01 & 16.7700\% & 3.580102 \\
-\hline
-\multirow{8}{*}{SVHN} & \multirow{3}{*}{1} & 0.001 & 76.2392\% & 0.759094 \\
- & & 0.005 & 64.1557\% & 1.122426 \\
- & & 0.01 & 51.7171\% & 1.461636 \\
-\cline{2-5}
- & \multirow{3}{*}{5} & 0.001 & 79.8632\% & 0.658507 \\
- & & 0.005 & 76.4828\% & 0.750793 \\
- & & 0.01 & 73.2314\% & 0.841259 \\
-\cline{2-5}
- & \multirow{3}{*}{10} & 0.001 & 80.6500\% & 0.633165 \\
- & & 0.005 & 79.0619\% & 0.678637 \\
- & & 0.01 & 76.4651\% & 0.749275 \\
-\hline
-\multirow{8}{*}{Tiny-ImageNet} & \multirow{3}{*}{1} & 0.001 & 4.6780\% & 4.806117 \\
- & & 0.005 & 2.1300\% & 5.101195 \\
- & & 0.01 & 1.5760\% & 5.203161 \\
-\cline{2-5}
- & \multirow{3}{*}{5} & 0.001 & 6.9080\% & 4.605473 \\
- & & 0.005 & 4.7160\% & 4.799801 \\
- & & 0.01 & 3.6420\% & 4.934168 \\
-\cline{2-5}
- & \multirow{3}{*}{10} & 0.001 & 7.5700\% & 4.538197 \\
- & & 0.005 & 5.6480\% & 4.708279 \\
- & & 0.01 & 4.5700\% & 4.809461 \\
-\hline
-\end{tabular}
-\end{table}
+Then the results showing the performance of the DP-SecAdam algorithm:
+
+
+| **Dataset** | **Clip** | **Noise Scale** | **Accuracy** | **Loss** |
+|-----|-----|-----|-----|-----|
+| FMNIST | 1 | 0.001 | 77.3080\% | 0.644753 |
+| | | 0.005 | 76.5540\% | 0.653533 |
+| | | 0.01 | 76.0420\% | 0.674888 |
+| | 5 | 0.001 | 77.7800\% | 0.617428 |
+| | | 0.005 | 76.6320\% | 0.646476 |
+| | | 0.01 | 77.5400\% | 0.636257 |
+| | 10 | 0.001 | 77.9420\% | 0.609834 |
+| | | 0.005 | 76.3700\% | 0.647844 |
+| | | 0.01 | 76.1480\% | 0.664629 |
+| CIFAR-10 | 1 | 0.001 | 55.3620\% | 1.275040 |
+| | | 0.005 | 46.1580\% | 1.482428 |
+| | | 0.01 | 41.1620\% | 1.587422 |
+| | 5 | 0.001 | 61.5140\% | 1.261278 |
+| | | 0.005 | 53.5140\% | 1.326430 |
+| | | 0.01 | 50.4620\% | 1.398186 |
+| | 10 | 0.001 | 61.9720\% | 1.359992 |
+| | | 0.005 | 59.5580\% | 1.195372 |
+| | | 0.01 | 54.7280\% | 1.288318 |
+| CIFAR-100 | 1 | 0.001 | 16.5800\% | 3.584607 |
+| | | 0.005 | 10.5040\% | 4.003648 |
+| | | 0.01 | 7.5200\% | 4.208735 |
+| | 5 | 0.001 | 20.8060\% | 3.375324 |
+| | | 0.005 | 16.7580\% | 3.580310 |
+| | | 0.01 | 14.0040\% | 3.738741 |
+| | 10 | 0.001 | 21.5960\% | 3.315562 |
+| | | 0.005 | 18.7160\% | 3.472931 |
+| | | 0.01 | 16.7700\% | 3.580102 |
+| SVHN | 1 | 0.001 | 76.2392\% | 0.759094 |
+| | | 0.005 | 64.1557\% | 1.122426 |
+| | | 0.01 | 51.7171\% | 1.461636 |
+| | 5 | 0.001 | 79.8632\% | 0.658507 |
+| | | 0.005 | 76.4828\% | 0.750793 |
+| | | 0.01 | 73.2314\% | 0.841259 |
+| | 10 | 0.001 | 80.6500\% | 0.633165 |
+| | | 0.005 | 79.0619\% | 0.678637 |
+| | | 0.01 | 76.4651\% | 0.749275 |
+| Tiny-ImageNet | 1 | 0.001 | 4.6780\% | 4.806117 |
+| | | 0.005 | 2.1300\% | 5.101195 |
+| | | 0.01 | 1.5760\% | 5.203161 |
+| | 5 | 0.001 | 6.9080\% | 4.605473 |
+| | | 0.005 | 4.7160\% | 4.799801 |
+| | | 0.01 | 3.6420\% | 4.934168 |
+| | 10 | 0.001 | 7.5700\% | 4.538197 |
+| | | 0.005 | 5.6480\% | 4.708279 |
+| | | 0.01 | 4.5700\% | 4.809461 |
 
 # iDLG and CPL Attack Results
 
-Results of the experiments using the iDLG~\cite{zhao2020idlg} and CPL~\cite{wei2020framework} gradient inversion attacks are shown in Table~\ref{table:extended inversion results}.
+Results of the experiments using the iDLG~\cite{zhao2020idlg} and CPL~\cite{wei2020framework} gradient inversion attacks are shown in the table below.
 
 \begin{table}
 \centering
 \caption{Inversion experiment results for the CPL and iDLG attacks.}
 \label{table:extended inversion results}
 \begin{tabular}{lllll}
-\hline
-\textbf{Dataset} & \textbf{Attack} & \textbf{Algorithm} & \textbf{PSNR} & \textbf{SSIM} \\
-\hline
-\multirow{8}{*}{FMNIST} & \multirow{4}{*}{CPL} & DP-SecAdam & 14.770492 & 0.609941 \\ % CNN Model
- & & DP-FedAVG & 5.923473 & 0.093275 \\
- & & SecAdam & 14.201989 & 0.583630 \\
- & & FedAVG & 5.886303 & 0.089134 \\
-\cline{2-5}
- & \multirow{4}{*}{iDLG} & DP-SecAdam & 14.770435 & 0.609465 \\
- & & DP-FedAVG & 15.885258 & 0.599957 \\
- & & SecAdam & 14.535288 & 0.610400 \\
- & & FedAVG & 14.956824 & 0.557471 \\
-% FMNIST & LeNet & CPL & DP-SecAdam & 12.484128 & 0.414067 \\
-% FMNIST & LeNet & CPL & DP-FedAVG & 5.051741 & 0.110430 \\
-% FMNIST & LeNet & CPL & SecAdam & 11.567043 & 0.363821 \\
-% FMNIST & LeNet & CPL & FedAVG & 4.939874 & 0.113724 \\
-% FMNIST & LeNet & iDLG & DP-SecAdam & 13.827465 & 0.502846 \\
-% FMNIST & LeNet & iDLG & DP-FedAVG & 10.517620 & 0.320517 \\
-% FMNIST & LeNet & iDLG & SecAdam & 13.245315 & 0.480413 \\
-% FMNIST & LeNet & iDLG & FedAVG & 11.398240 & 0.357873 \\
-\hline
-\multirow{4}{*}{CIFAR-10} & \multirow{2}{*}{CPL} & DP-FedAVG & 11.876072 & 0.143282 \\
- & & FedAVG & 12.140654 & 0.127347 \\
-\cline{2-5}
- & \multirow{2}{*}{iDLG} & DP-FedAVG & 15.250543 & 0.210011 \\
- & & FedAVG & 14.612536 & 0.184445 \\
-\hline
-\multirow{4}{*}{CIFAR-100} & \multirow{2}{*}{CPL} & DP-FedAVG & 12.393472 & 0.154556 \\
- & & FedAVG & 12.462728 & 0.152147 \\
-\cline{2-5}
- & \multirow{2}{*}{iDLG} & DP-FedAVG & 15.029755 & 0.250552 \\
- & & FedAVG & 15.060930 & 0.248782 \\
-\hline
-\multirow{4}{*}{SVHN} & \multirow{2}{*}{CPL} & DP-FedAVG & 13.459783 & 0.161448 \\
- & & FedAVG & 13.441566 & 0.167241 \\
-\cline{2-5}
- & \multirow{2}{*}{iDLG} & DP-FedAVG & 17.557103 & 0.365431 \\
- & & FedAVG & 17.990578 & 0.368059 \\
-\hline
-\multirow{4}{*}{Tiny-ImageNet} & \multirow{2}{*}{CPL} & DP-FedAVG & 11.481630 & 0.077327 \\
- & & FedAVG & 11.533535 & 0.081349 \\
-\cline{2-5}
- & \multirow{2}{*}{iDLG} & DP-FedAVG & 13.595315 & 0.169007 \\
- & & FedAVG & 13.527347 & 0.166807 \\
-\hline
+\textbf{Dataset} | \textbf{Attack} | \textbf{Algorithm} | \textbf{PSNR} | \textbf{SSIM} |
+|FMNIST} | \multirow{4}{*}{CPL} | DP-SecAdam | 14.770492 | 0.609941 | % CNN Model
+| | | DP-FedAVG | 5.923473 | 0.093275 |
+| | | SecAdam | 14.201989 | 0.583630 |
+| | | FedAVG | 5.886303 | 0.089134 |
+| | \multirow{4}{*}{iDLG} | DP-SecAdam | 14.770435 | 0.609465 |
+| | | DP-FedAVG | 15.885258 | 0.599957 |
+| | | SecAdam | 14.535288 | 0.610400 |
+| | | FedAVG | 14.956824 | 0.557471 |
+% FMNIST | LeNet | CPL | DP-SecAdam | 12.484128 | 0.414067 |
+% FMNIST | LeNet | CPL | DP-FedAVG | 5.051741 | 0.110430 |
+% FMNIST | LeNet | CPL | SecAdam | 11.567043 | 0.363821 |
+% FMNIST | LeNet | CPL | FedAVG | 4.939874 | 0.113724 |
+% FMNIST | LeNet | iDLG | DP-SecAdam | 13.827465 | 0.502846 |
+% FMNIST | LeNet | iDLG | DP-FedAVG | 10.517620 | 0.320517 |
+% FMNIST | LeNet | iDLG | SecAdam | 13.245315 | 0.480413 |
+% FMNIST | LeNet | iDLG | FedAVG | 11.398240 | 0.357873 |
+\multirow{4}{*}{CIFAR-10} | \multirow{2}{*}{CPL} | DP-FedAVG | 11.876072 | 0.143282 |
+| | | FedAVG | 12.140654 | 0.127347 |
+| | \multirow{2}{*}{iDLG} | DP-FedAVG | 15.250543 | 0.210011 |
+| | | FedAVG | 14.612536 | 0.184445 |
+\multirow{4}{*}{CIFAR-100} | \multirow{2}{*}{CPL} | DP-FedAVG | 12.393472 | 0.154556 |
+| | | FedAVG | 12.462728 | 0.152147 |
+| | \multirow{2}{*}{iDLG} | DP-FedAVG | 15.029755 | 0.250552 |
+| | | FedAVG | 15.060930 | 0.248782 |
+\multirow{4}{*}{SVHN} | \multirow{2}{*}{CPL} | DP-FedAVG | 13.459783 | 0.161448 |
+| | | FedAVG | 13.441566 | 0.167241 |
+| | \multirow{2}{*}{iDLG} | DP-FedAVG | 17.557103 | 0.365431 |
+| | | FedAVG | 17.990578 | 0.368059 |
+\multirow{4}{*}{Tiny-ImageNet} | \multirow{2}{*}{CPL} | DP-FedAVG | 11.481630 | 0.077327 |
+| | | FedAVG | 11.533535 | 0.081349 |
+| | \multirow{2}{*}{iDLG} | DP-FedAVG | 13.595315 | 0.169007 |
+| | | FedAVG | 13.527347 | 0.166807 |
 \end{tabular}
 \end{table}
