@@ -1,4 +1,4 @@
-# Mitigation of Later Stage Gradient Inversion Attacks in Federated Learning while Preserving Privacy
+# Mitigation of Gradient Inversion Attacks in Federated Learning with Private Adaptive Optimization
 
 Code repository for all experiments for our namesake paper.
 
