@@ -339,4 +339,6 @@ Results of the experiments using the iDLG https://arxiv.org/abs/2001.02610 and C
 | | iDLG | FedAVG | 13.321169 | 0.173465 |
 | | | SecAdam | 13.552867 | 0.194854 |
 | | | DP-FedAVG | 12.935913 | 0.171474 |
+
+With this, we see that while these attacks are less effective in our setting, SecAdam still tends to reduce the effectiveness of inversion. The only cases that are in exception to this remain close to federated averaging and do not exceed a SSIM of 0.5.
 | | | DP-SecAdam | 13.667149 | 0.178436 |
