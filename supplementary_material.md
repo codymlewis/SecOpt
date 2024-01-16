@@ -298,43 +298,45 @@ Then the results showing the performance of the DP-SecAdam algorithm:
 
 Results of the experiments using the iDLG https://arxiv.org/abs/2001.02610 and CPL https://link.springer.com/chapter/10.1007/978-3-030-58951-6_27 gradient inversion attacks are shown in the table below.
 
-\begin{table}
-\centering
-\caption{Inversion experiment results for the CPL and iDLG attacks.}
-\label{table:extended inversion results}
-\begin{tabular}{lllll}
-\textbf{Dataset} | \textbf{Attack} | \textbf{Algorithm} | \textbf{PSNR} | \textbf{SSIM} |
-|FMNIST} | \multirow{4}{*}{CPL} | DP-SecAdam | 14.770492 | 0.609941 | % CNN Model
-| | | DP-FedAVG | 5.923473 | 0.093275 |
-| | | SecAdam | 14.201989 | 0.583630 |
-| | | FedAVG | 5.886303 | 0.089134 |
-| | \multirow{4}{*}{iDLG} | DP-SecAdam | 14.770435 | 0.609465 |
-| | | DP-FedAVG | 15.885258 | 0.599957 |
-| | | SecAdam | 14.535288 | 0.610400 |
-| | | FedAVG | 14.956824 | 0.557471 |
-% FMNIST | LeNet | CPL | DP-SecAdam | 12.484128 | 0.414067 |
-% FMNIST | LeNet | CPL | DP-FedAVG | 5.051741 | 0.110430 |
-% FMNIST | LeNet | CPL | SecAdam | 11.567043 | 0.363821 |
-% FMNIST | LeNet | CPL | FedAVG | 4.939874 | 0.113724 |
-% FMNIST | LeNet | iDLG | DP-SecAdam | 13.827465 | 0.502846 |
-% FMNIST | LeNet | iDLG | DP-FedAVG | 10.517620 | 0.320517 |
-% FMNIST | LeNet | iDLG | SecAdam | 13.245315 | 0.480413 |
-% FMNIST | LeNet | iDLG | FedAVG | 11.398240 | 0.357873 |
-\multirow{4}{*}{CIFAR-10} | \multirow{2}{*}{CPL} | DP-FedAVG | 11.876072 | 0.143282 |
-| | | FedAVG | 12.140654 | 0.127347 |
-| | \multirow{2}{*}{iDLG} | DP-FedAVG | 15.250543 | 0.210011 |
-| | | FedAVG | 14.612536 | 0.184445 |
-\multirow{4}{*}{CIFAR-100} | \multirow{2}{*}{CPL} | DP-FedAVG | 12.393472 | 0.154556 |
-| | | FedAVG | 12.462728 | 0.152147 |
-| | \multirow{2}{*}{iDLG} | DP-FedAVG | 15.029755 | 0.250552 |
-| | | FedAVG | 15.060930 | 0.248782 |
-\multirow{4}{*}{SVHN} | \multirow{2}{*}{CPL} | DP-FedAVG | 13.459783 | 0.161448 |
-| | | FedAVG | 13.441566 | 0.167241 |
-| | \multirow{2}{*}{iDLG} | DP-FedAVG | 17.557103 | 0.365431 |
-| | | FedAVG | 17.990578 | 0.368059 |
-\multirow{4}{*}{Tiny-ImageNet} | \multirow{2}{*}{CPL} | DP-FedAVG | 11.481630 | 0.077327 |
-| | | FedAVG | 11.533535 | 0.081349 |
-| | \multirow{2}{*}{iDLG} | DP-FedAVG | 13.595315 | 0.169007 |
-| | | FedAVG | 13.527347 | 0.166807 |
-\end{tabular}
-\end{table}
+| **Dataset** | **Attack** | **Algorithm** | **PSNR** | **SSIM** |
+|-----|-----|-----|-----|-----|
+| FMNIST | CPL | FedAVG | 13.638538 | 0.511817 |
+| | | SecAdam | 13.335914 | 0.469688 |
+| | | DP-FedAVG | 13.077572 | 0.467103 |
+| | | DP-SecAdam | 11.965853 | 0.432014 |
+| | iDLG | FedAVG | 13.983222 | 0.536871 |
+| | | SecAdam | 12.380778 | 0.404854 |
+| | | DP-FedAVG | 13.539583 | 0.503104 |
+| | | DP-SecAdam | 13.603047 | 0.529272 |
+| CIFAR-10 | CPL | FedAVG | 14.664143 | 0.231175 |
+| | | SecAdam | 15.063545 | 0.267228 |
+| | | DP-FedAVG | 15.079158 | 0.241138 |
+| | | DP-SecAdam | 15.534382 | 0.227034 |
+| | iDLG | FedAVG | 15.719393 | 0.272500 |
+| | | SecAdam | 15.552677 | 0.279642 |
+| | | DP-FedAVG | 16.021417 | 0.270158 |
+| | | DP-SecAdam | 15.020944 | 0.229571 |
+| CIFAR-100 | CPL | FedAVG | 14.984541 | 0.269944 |
+| | | SecAdam | 15.331099 | 0.291301 |
+| | | DP-FedAVG | 14.750009 | 0.248753 |
+| | | DP-SecAdam | 15.470012 | 0.263163 |
+| | iDLG | FedAVG | 15.393039 | 0.307473 |
+| | | SecAdam | 15.820854 | 0.293692 |
+| | | DP-FedAVG | 15.409809 | 0.296051 |
+| | | DP-SecAdam | 15.551832 | 0.275074 |
+| SVHN | CPL | FedAVG | 17.990244 | 0.434603 |
+| | | SecAdam | 18.985126 | 0.383141 |
+| | | DP-FedAVG | 18.295922 | 0.412294 |
+| | | DP-SecAdam | 18.294360 | 0.379999 |
+| | iDLG | FedAVG | 20.073247 | 0.492235 |
+| | | SecAdam | 19.543477 | 0.411610 |
+| | | DP-FedAVG | 20.454894 | 0.502031 |
+| | | DP-SecAdam | 18.938289 | 0.431923 |
+| Tiny-ImageNet | CPL | FedAVG | 13.130674 | 0.153355 |
+| | | SecAdam | 13.318435 | 0.183864 |
+| | | DP-FedAVG | 12.747552 | 0.115091 |
+| | | DP-SecAdam | 13.331395 | 0.161485 |
+| | iDLG | FedAVG | 13.321169 | 0.173465 |
+| | | SecAdam | 13.552867 | 0.194854 |
+| | | DP-FedAVG | 12.935913 | 0.171474 |
+| | | DP-SecAdam | 13.667149 | 0.178436 |
