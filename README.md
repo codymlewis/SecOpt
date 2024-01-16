@@ -11,11 +11,11 @@ With the rapid advancements in machine learning as well as an increase in the aw
 **Requirements:**
 - Python 3.11+
 - Bash
-- Python poetry
+- [Python poetry](https://python-poetry.org/)
 
 To install all required libraries, run the `./Configure.sh` shell script. This will also detect if you have a NVIDIA GPU and install the correct library for acceleration.
 
-Then for the experiments, there are the `inversion` and `performance` folders with respectively correspond to Section VI.A and VI.B. The inversion experiments can be run by first training the required models with `train.sh`, then attacking them with `attack.sh`. The performance experiments can be run with `train.sh`. Both experiments generate a `results.csv` file which can be processed and summarized into tables by running `python statistics.py`.
+Then for the experiments, there are the `inversion` and `performance` folders which respectively correspond to Section VI.A and VI.B. The inversion experiments can be run by first training the required models with `train.sh`, then attacking them with `attack.sh`. The performance experiments can be run with `train.sh`. Both experiments generate a `results.csv` file which can be processed and summarized into tables by running `python statistics.py`.
 
 
 ## Supplementary Material
