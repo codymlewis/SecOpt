@@ -89,3 +89,15 @@ def add_noise(
         return updates, AddNoiseState(rng_key=all_keys[0])
 
     return optax.GradientTransformation(init_fn, update_fn)
+
+
+def topk(c: float = 0.8) -> optax.GradientTranformation:
+    def init_fn(params):
+        del params
+        return optax.EmptyState()
+
+    def update_fn(updates, state, params=None):
+        del params
+        return jax.tree_util.tree_map(
+            lambda g: jnp.where(g > jnp.argpartition(g, round(c * g.size)), g, 0)
+        )
