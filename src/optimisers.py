@@ -20,7 +20,7 @@ def dpsecadam(
     b2: float = 0.999,
     eps: float = 1e-8,
     clip_threshold: float = 1.0,
-    noise_scale: float = 0.1,
+    noise_scale: float = 0.01,
     seed=0,
 ) -> optax.GradientTransformation:
     return optax.chain(
@@ -33,7 +33,7 @@ def dpsecadam(
 def dpsgd(
     learning_rate: optax.ScalarOrSchedule,
     clip_threshold: float = 1.0,
-    noise_scale: float = 0.1,
+    noise_scale: float = 0.01,
     seed=0,
 ) -> optax.GradientTransformation:
     return optax.chain(
@@ -100,4 +100,28 @@ def topk(c: float = 0.8) -> optax.GradientTranformation:
         del params
         return jax.tree_util.tree_map(
             lambda g: jnp.where(g > jnp.argpartition(g, round(c * g.size)), g, 0)
+        ), state
+
+    return optax.GradientTransformation(init_fn, update_fn)
+
+
+class FedProxState(NamedTuple):
+    """State for fedprox."""
+    prev_params: optax.Params
+
+
+def fedprox(mu: float = 0.00001) -> optax.GradientTransformation:
+    def init_fn(params):
+        return FedProxState(prev_params=params)
+
+    def update_fn(updates, state, params):
+        assert params is not None, 'FedProx requires a params argument'
+        fedprox_updates = jax.tree_util.tree_map(
+            lambda g, p, pp: g - mu * (p - pp),
+            updates,
+            params,
+            state.prev_params,
         )
+        return fedprox_updates, FedProxState(prev_params=params)
+
+    return optax.GradientTransformation(init_fn, update_fn)

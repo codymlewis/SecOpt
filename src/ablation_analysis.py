@@ -93,7 +93,7 @@ if __name__ == "__main__":
         level=logging.INFO if args.verbose else logging.WARNING
     )
 
-    df = pd.read_csv("ablation_results/ablation_results.csv").dropna()
+    df = pd.read_csv("results/ablation_results.csv").dropna()
     print(f"Pearson correlation between the accuracy and attack SSIM: {sps.pearsonr(df.accuracy, df.ssim)}")
     print(f"Pearson correlation between the accuracy and attack PSNR: {sps.pearsonr(df.accuracy, df.psnr)}")
     print(f"Pearson correlation between the attack SSIM and attack PSNR: {sps.pearsonr(df.ssim, df.psnr)}")
@@ -104,7 +104,7 @@ if __name__ == "__main__":
         )
         violin_plot(act_results, "Activations")
 
-        e30_df = pd.read_csv("ablation_results/e30_ablation_results.csv").dropna()
+        e30_df = pd.read_csv("results/e30_ablation_results.csv").dropna()
         e30_act_results = analysis_results(
             e30_df, return_dict=True, activation=unique_not_none(e30_df.activation), pooling="none", normalisation="none"
         )
@@ -115,9 +115,9 @@ if __name__ == "__main__":
         )
         violin_plot(apn_results, "APN")
 
-        bs1_df = pd.read_csv("ablation_results/bs1_ablation_results.csv").dropna()
-        rp_df = pd.read_csv("ablation_results/rp_bs1_ablation_results.csv").dropna()
-        sc_df = pd.read_csv("ablation_results/sc_bs1_ablation_results.csv").dropna()
+        bs1_df = pd.read_csv("results/bs1_ablation_results.csv").dropna()
+        rp_df = pd.read_csv("results/rp_bs1_ablation_results.csv").dropna()
+        sc_df = pd.read_csv("results/sc_bs1_ablation_results.csv").dropna()
         full_results = {
             "Batch size 8": df,
             "Batch size 1": bs1_df,
