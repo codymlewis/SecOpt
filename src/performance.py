@@ -9,13 +9,13 @@ from tqdm import trange
 
 import load_datasets
 import models
-import utils
+import common
 
 
 def find_optimiser(opt_name, clip_threshold, noise_scale):
-    if "dp" in opt_name:
-        return functools.partial(utils.find_optimiser(opt_name), clip_threshold=clip_threshold, noise_scale=noise_scale)
-    return utils.find_optimiser(opt_name)
+    if opt_name.startswith("dp"):
+        return functools.partial(common.find_optimiser(opt_name), clip_threshold=clip_threshold, noise_scale=noise_scale)
+    return common.find_optimiser(opt_name)
 
 
 if __name__ == "__main__":
@@ -63,11 +63,11 @@ if __name__ == "__main__":
             )
             for _ in range(args.clients)
         ]
-    idxs = utils.lda(dataset['train']['Y'], args.clients, dataset.nclasses, rng, alpha=0.5)
+    idxs = common.lda(dataset['train']['Y'], args.clients, dataset.nclasses, rng, alpha=0.5)
     client_data = [
         {"X": dataset['train']['X'][idx], "Y": dataset['train']['Y'][idx]} for idx in idxs
     ]
-    update_step = utils.pgd_update_step if args.pgd else utils.update_step
+    update_step = common.pgd_update_step if args.pgd else common.update_step
 
     for _ in (pbar := trange(args.rounds)):
         full_loss_sum = 0.0
@@ -98,18 +98,18 @@ if __name__ == "__main__":
             full_loss_sum += loss_sum / len(idxs)
 
             if args.client_optimiser == "secadam":
-                mu, nu = utils.find_secadam_update(client_states[c])
+                mu, nu = common.find_secadam_update(client_states[c])
                 all_mus.append(mu)
                 all_nus.append(nu)
             else:
-                all_updates.append(utils.find_update(global_state, client_states[c], args.client_learning_rate))
+                all_updates.append(common.find_update(global_state, client_states[c], args.client_learning_rate))
         if args.client_optimiser == "secadam":
-            global_grads = utils.secadam_agg(all_mus, all_nus)
+            global_grads = common.secadam_agg(all_mus, all_nus)
         else:
-            global_grads = utils.fedavg(all_updates)
+            global_grads = common.fedavg(all_updates)
         global_state = global_state.apply_gradients(grads=global_grads)
         pbar.set_postfix_str(f"LOSS: {full_loss_sum / args.clients:.3f}")
-    final_accuracy, final_loss = utils.measure(
+    final_accuracy, final_loss = common.measure(
         global_state,
         dataset['test']['X'],
         dataset['test']['Y'],

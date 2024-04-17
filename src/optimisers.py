@@ -91,7 +91,17 @@ def add_noise(
     return optax.GradientTransformation(init_fn, update_fn)
 
 
-def topk(c: float = 0.8) -> optax.GradientTransformation:
+def topk(
+    learning_rate: optax.ScalarOrSchedule,
+    c: float = 0.8,
+) -> optax.GradientTransformation:
+    return optax.chain(
+        topk_prune(c),
+        optax.sgd(learning_rate),
+    )
+
+
+def topk_prune(c: float = 0.8) -> optax.GradientTransformation:
     def init_fn(params):
         del params
         return optax.EmptyState()
@@ -99,7 +109,12 @@ def topk(c: float = 0.8) -> optax.GradientTransformation:
     def update_fn(updates, state, params=None):
         del params
         return jax.tree_util.tree_map(
-            lambda g: jnp.where(g > jnp.argpartition(g, round(c * g.size)), g, 0)
+            lambda g: jnp.where(
+                jnp.abs(g) >= jnp.partition(jnp.abs(g).reshape(-1), round((1 - c) * g.size))[round((1 - c) * g.size)],
+                g,
+                0
+            ),
+            updates,
         ), state
 
     return optax.GradientTransformation(init_fn, update_fn)
@@ -110,7 +125,17 @@ class FedProxState(NamedTuple):
     prev_params: optax.Params
 
 
-def fedprox(mu: float = 0.00001) -> optax.GradientTransformation:
+def fedprox(
+    learning_rate: optax.ScalarOrSchedule,
+    mu: float = 0.00001,
+) -> optax.GradientTransformation:
+    return optax.chain(
+        subtract_proximal(mu),
+        optax.sgd(learning_rate),
+    )
+
+
+def subtract_proximal(mu: float = 0.00001) -> optax.GradientTransformation:
     def init_fn(params):
         return FedProxState(prev_params=params)
 

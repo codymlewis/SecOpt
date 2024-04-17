@@ -1,6 +1,7 @@
 #!/bin/bash
 
 
+# TODO: Add precode
 for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
     if [[ $dataset == "fmnist" ]]; then
         models=("CNN" "LeNet")
