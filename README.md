@@ -15,7 +15,7 @@ With the rapid advancements in machine learning as well as an increase in the aw
 
 To install all required libraries, run the `./Configure.sh` shell script. This will also detect if you have a NVIDIA GPU and install the correct library for acceleration.
 
-Then for the experiments, we have the `src` folder which correspond to Section VI. The inversion experiments can be run by first training the required models with `scrips/train_inversion_models.sh`, then attacking them with `attack.sh`. The performance experiments can be run with `performance.sh`. Both experiments generate a csv file which can be processed and summarized into tables by running `python statistics.py`.
+Then for the experiments, we have the `src` folder which correspond to Section VI. The inversion experiments can be run by first training the required models with `scripts/train_inversion_models.sh`, then attacking them with `attack.sh`. The performance experiments can be run with `performance.sh`. Both experiments generate a csv file which can be processed and summarized into tables by running `python statistics.py`.
 
 
 ## Supplementary Material
