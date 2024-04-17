@@ -118,7 +118,7 @@ if __name__ == "__main__":
     )
     print(f"Final accuracy: {final_accuracy:.3%}, Final Loss: {final_loss:.5f}")
 
-    results_file = "results.csv"
+    results_file = "results/performance_results.csv"
     training_details = vars(args)
     training_details['accuracy'] = final_accuracy
     training_details['loss'] = final_loss

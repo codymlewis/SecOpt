@@ -55,7 +55,7 @@ if __name__ == "__main__":
     print(f"Final accuracy: {final_accuracy:.3%}")
     print(f"Checkpoints were saved to {checkpoint_file}")
 
-    accuracy_file = "accuracies.csv"
+    accuracy_file = "results/accuracies.csv"
     training_details = vars(args)
     training_details['accuracy'] = final_accuracy
     if not os.path.exists(accuracy_file):

@@ -188,9 +188,7 @@ def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform",
 
 def tune_brightness(Z, ground_truth):
     "Tune the brightness of the recreated images with ground truth"
-    # Z *= einops.reduce(ground_truth, 'b h w c -> c', np.std) / einops.reduce(Z, 'b h w c -> c', np.std)
     Z *= ground_truth.std() / Z.std()
-    # Z += einops.reduce(ground_truth, 'b h w c -> c', np.mean) + einops.reduce(Z, 'b h w c -> c', np.mean)
     Z += ground_truth.mean() + Z.mean()
     Z = np.clip(Z, 0, 1)
     return Z
@@ -298,5 +296,6 @@ if __name__ == "__main__":
     full_results = pd.DataFrame.from_dict(all_results)
     print("Summary results:")
     print(full_results.describe())
-    full_results.to_csv("results.csv", mode='a', header=not os.path.exists("results.csv"), index=False)
-    print("Added results to results.csv")
+    results_fn = "results/inversion_results.csv"
+    full_results.to_csv(results_fn, mode='a', header=not os.path.exists(results_fn), index=False)
+    print("Added results to results_fn")

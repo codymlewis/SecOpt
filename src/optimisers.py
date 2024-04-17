@@ -91,7 +91,7 @@ def add_noise(
     return optax.GradientTransformation(init_fn, update_fn)
 
 
-def topk(c: float = 0.8) -> optax.GradientTranformation:
+def topk(c: float = 0.8) -> optax.GradientTransformation:
     def init_fn(params):
         del params
         return optax.EmptyState()
