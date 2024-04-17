@@ -24,7 +24,7 @@ scikit-image = "0.22.0"
 scikit-learn = "1.4.2"
 scipy = "1.11.3"
 pyqt6 = "6.6.0"
-jinja2 = "3.1.2"
+jinja2 = "3.1.3"
 safeflax = { git = "git@github.com:codymlewis/safeflax.git" }
 
 [tool.poetry.group.dev.dependencies]
