@@ -66,7 +66,8 @@ def update_step(state, X, Y, lamb=0.0):
         logits = jnp.clip(state.apply_fn(params, X), 1e-15, 1 - 1e-15)
         one_hot = jax.nn.one_hot(Y, logits.shape[-1])
         ce_loss = -jnp.mean(jnp.einsum("bl,bl -> b", one_hot, jnp.log(logits)))
-        return ce_loss + lamb * jax.tree_util.tree_reduce(lambda *P: sum([jnp.sum(p**2) for p in P]), params)
+        reg_loss = jax.tree_util.tree_reduce(lambda *P: sum([jnp.mean(p**2) for p in P]) / len(P), params)
+        return ce_loss + lamb * reg_loss
 
     loss, grads = jax.value_and_grad(loss_fn)(state.params)
     state = state.apply_gradients(grads=grads)
@@ -79,7 +80,8 @@ def pgd_update_step(state, X, Y, epsilon=4/255, pgd_steps=3, lamb=0.0):
         logits = jnp.clip(state.apply_fn(params, dX), 1e-15, 1 - 1e-15)
         one_hot = jax.nn.one_hot(Y, logits.shape[-1])
         ce_loss = -jnp.mean(jnp.einsum("bl,bl -> b", one_hot, jnp.log(logits)))
-        return ce_loss + lamb * jax.tree_util.tree_reduce(lambda *P: sum([jnp.sum(p**2) for p in P]), params)
+        reg_loss = jax.tree_util.tree_reduce(lambda *P: sum([jnp.mean(p**2) for p in P]) / len(P), params)
+        return ce_loss + lamb * reg_loss
 
     pgd_lr = (2 * epsilon) / 3
     X_nat = X

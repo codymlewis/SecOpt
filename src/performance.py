@@ -43,6 +43,7 @@ if __name__ == "__main__":
                         help="Clip gradients to this maximum norm if DP optimisation")
     parser.add_argument('-ns', '--noise-scale', type=float, default=0.1,
                         help="Scale of noise applied to gradient if DP optimisation")
+    parser.add_argument('-reg', '--regularise', action='store_true', help="Apply L2 regularisation to training.")
     args = parser.parse_args()
 
     print(f"Training with {vars(args)}")
@@ -93,7 +94,11 @@ if __name__ == "__main__":
                 loss_sum = 0.0
                 for idx in idxs:
                     loss, client_states[c] = update_step(
-                        client_states[c], client_data[c]['X'][idx], client_data[c]['Y'][idx])
+                        client_states[c],
+                        client_data[c]['X'][idx],
+                        client_data[c]['Y'][idx],
+                        lamb=0.01 if args.regularise else 0.0,
+                    )
                     loss_sum += loss
             full_loss_sum += loss_sum / len(idxs)
 
@@ -118,6 +123,7 @@ if __name__ == "__main__":
     )
     print(f"Final accuracy: {final_accuracy:.3%}, Final Loss: {final_loss:.5f}")
 
+    os.makedirs('results', exist_ok=True)
     results_file = "results/performance_results.csv"
     training_details = vars(args)
     training_details['accuracy'] = final_accuracy

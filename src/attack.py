@@ -117,12 +117,28 @@ def measure_leakage(true_X, Z, true_Y, labels):
     return {"ssim": max(metrics['ssim']), "psnr": max(metrics['psnr'])}
 
 
-def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform", l1_reg=0.0, l2_reg=1e-6, nsteps=1000):
+def perform_attack(
+    state,
+    dataset,
+    attack,
+    train_args,
+    seed=42,
+    zinit="uniform",
+    l1_reg=0.0,
+    l2_reg=1e-6,
+    nsteps=1000,
+    client_regularisation=False,
+):
     batch_size = int(train_args['batch_size'])
     rng = np.random.default_rng(seed)
     idx = rng.choice(len(dataset['train']['Y']), batch_size)
     update_step = common.pgd_update_step if train_args["pgd"] else common.update_step
-    loss, new_state = update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
+    loss, new_state = update_step(
+        state,
+        dataset['train']['X'][idx],
+        dataset['train']['Y'][idx],
+        lamb=0.01 if client_regularisation else 0.0,
+    )
 
     true_grads = jax.tree_util.tree_map(lambda a, b: a - b, state.params, new_state.params)
     labels = jnp.argsort(jnp.min(true_grads['params']['classifier']['kernel'], axis=0))[:batch_size]
@@ -172,6 +188,7 @@ def perform_attack(state, dataset, attack, train_args, seed=42, zinit="uniform",
             Z = channel_data
         case _:
             raise NotImplementedError(f"Dummy data initialisation {zinit} is not implemented.")
+
     attack_state = solver.init_state(Z)
     trainer = jax.jit(solver.update)
     for s in (pbar := trange(nsteps)):
@@ -211,6 +228,7 @@ if __name__ == "__main__":
                         help="Clip gradients to this maximum norm if DP optimisation")
     parser.add_argument('--noise-scale', type=float, default=0.00001,
                         help="Scale of noise applied to gradient if DP optimisation")
+    parser.add_argument('-reg', '--regularise', action='store_true', help="Apply L2 regularisation to training.")
     args = parser.parse_args()
 
     train_args = {
@@ -247,7 +265,10 @@ if __name__ == "__main__":
         for k, v in train_args.items() if k in ["dataset", "model", "pgd"]
     }
     all_results['attack'] = [args.attack for _ in range(args.runs)]
-    opt_name = f"{args.optimiser}_ct{args.clip_threshold}_ns{args.noise_scale}" if "dp" in args.optimiser else args.optimiser
+    if args.optimiser:
+        opt_name = f"{args.optimiser}_ct{args.clip_threshold}_ns{args.noise_scale}" if "dp" in args.optimiser else args.optimiser
+    else:
+        opt_name = train_args["optimiser"]
     all_results['optimiser'] = [opt_name for _ in range(args.runs)]
     all_results['batch_size'] = [args.batch_size for _ in range(args.runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
@@ -257,7 +278,15 @@ if __name__ == "__main__":
         seed = round(i**2 + i * np.cos(i * np.pi / 4)) % 2**31
         print(f"Performing the attack with {seed=}")
         Z, labels, idx = perform_attack(
-            state, dataset, args.attack, train_args, seed=seed, zinit=args.zinit, l1_reg=args.l1_reg, l2_reg=args.l2_reg
+            state,
+            dataset,
+            args.attack,
+            train_args,
+            seed=seed,
+            zinit=args.zinit,
+            l1_reg=args.l1_reg,
+            l2_reg=args.l2_reg,
+            client_regularisation=args.regularise,
         )
         results = measure_leakage(dataset['train']['X'][idx], Z, dataset['train']['Y'][idx], labels)
         tuned_Z = tune_brightness(Z.copy(), dataset['train']['X'][idx])
@@ -298,4 +327,4 @@ if __name__ == "__main__":
     print(full_results.describe())
     results_fn = "results/inversion_results.csv"
     full_results.to_csv(results_fn, mode='a', header=not os.path.exists(results_fn), index=False)
-    print("Added results to results_fn")
+    print(f"Added results to {results_fn}")
