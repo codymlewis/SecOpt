@@ -123,6 +123,7 @@ def perform_attack(
     attack,
     train_args,
     seed=42,
+    steps=1,
     zinit="uniform",
     l1_reg=0.0,
     l2_reg=1e-6,
@@ -131,14 +132,16 @@ def perform_attack(
 ):
     batch_size = int(train_args['batch_size'])
     rng = np.random.default_rng(seed)
-    idx = rng.choice(len(dataset['train']['Y']), batch_size)
     update_step = common.pgd_update_step if train_args["pgd"] else common.update_step
-    loss, new_state = update_step(
-        state,
-        dataset['train']['X'][idx],
-        dataset['train']['Y'][idx],
-        lamb=0.01 if client_regularisation else 0.0,
-    )
+    new_state = state
+    for step in range(steps):
+        idx = rng.choice(len(dataset['train']['Y']), batch_size)
+        _, new_state = update_step(
+            new_state,
+            dataset['train']['X'][idx],
+            dataset['train']['Y'][idx],
+            lamb=0.01 if client_regularisation else 0.0,
+        )
 
     true_grads = jax.tree_util.tree_map(lambda a, b: a - b, state.params, new_state.params)
     labels = jnp.argsort(jnp.min(true_grads['params']['classifier']['kernel'], axis=0))[:batch_size]
@@ -229,6 +232,8 @@ if __name__ == "__main__":
     parser.add_argument('--noise-scale', type=float, default=0.00001,
                         help="Scale of noise applied to gradient if DP optimisation")
     parser.add_argument('-reg', '--regularise', action='store_true', help="Apply L2 regularisation to training.")
+    parser.add_argument('--steps', type=int, default=1,
+                        help="Number of steps of training before an attack is performed.")
     args = parser.parse_args()
 
     train_args = {
@@ -283,6 +288,7 @@ if __name__ == "__main__":
             args.attack,
             train_args,
             seed=seed,
+            steps=args.steps,
             zinit=args.zinit,
             l1_reg=args.l1_reg,
             l2_reg=args.l2_reg,
