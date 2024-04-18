@@ -86,7 +86,7 @@ class CNN(nn.Module):
         x = nn.Conv(16, (3, 3), padding="SAME")(x)
         x = nn.relu(x)
         x = einops.rearrange(x, "b h w c -> b (h w c)")
-        x, mu, std = VariationalBottleNeck()(x)
+        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         if representation:
             return x
         x = nn.Dense(self.classes, name="classifier")(x)
@@ -112,7 +112,7 @@ class LeNet(nn.Module):
         x = nn.relu(x)
         x = nn.Dense(84)(x)
         x = nn.relu(x)
-        x, mu, std = VariationalBottleNeck()(x)
+        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         if representation:
             return x
         x = nn.Dense(self.classes, name="classifier")(x)
@@ -158,7 +158,7 @@ class ConvNeXt(nn.Module):
                 )(x)
 
         x = einops.reduce(x, 'b h w c -> b c', 'mean')
-        x, mu, std = VariationalBottleNeck()(x)
+        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         if representation:
             return x
         x = nn.LayerNorm(epsilon=1e-6, name="convnext_base_head_layernorm")(x)
@@ -239,7 +239,7 @@ class ResNetV2(nn.Module):
 
         x = einops.reduce(x, "b h w d -> b d", 'mean')
 
-        x, mu, std = VariationalBottleNeck()(x)
+        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         if representation:
             return x
         x = nn.Dense(self.classes, name="classifier")(x)
@@ -413,11 +413,13 @@ def perform_attack(
     dataset,
     train_args,
     seed=42,
+    batch_size=None,
     l1_reg=0.0,
     l2_reg=1e-6,
     nsteps=1000,
 ):
-    batch_size = int(train_args['batch_size'])
+    if batch_size is None:
+        batch_size = int(train_args['batch_size'])
     rng = np.random.default_rng(seed)
     idx = rng.choice(len(dataset['train']['Y']), batch_size)
     loss, new_state = (pgd_update_step if train_args["pgd"] else update_step)(
@@ -507,15 +509,16 @@ if __name__ == "__main__":
     print(f"Performing experiment with {training_details}")
 
     if args.train_inversion:
-        checkpoint_file = "checkpoints/precode-dataset={}-seed={}-learning_rate={}-pgd={}-model={}-perturb={}-batch_size={}.safetensors".format(
-            args.dataset,
-            args.seed,
-            args.learning_rate,
-            args.pgd,
-            args.model,
-            args.perturb,
-            args.batch_size,
-        )
+        checkpoint_file = "precode_checkpoints/" + \
+            "dataset={}-seed={}-learning_rate={}-pgd={}-model={}-perturb={}-batch_size={}.safetensors".format(
+                args.dataset,
+                args.seed,
+                args.learning_rate,
+                args.pgd,
+                args.model,
+                args.perturb,
+                args.batch_size,
+            )
 
         for e in (pbar := trange(args.epochs)):
             if args.perturb:
@@ -528,7 +531,7 @@ if __name__ == "__main__":
                 loss, state = update_step(state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
                 loss_sum += loss
             pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
-        os.makedirs("checkpoints", exist_ok=True)
+        os.makedirs("precode_checkpoints", exist_ok=True)
         safeflax.save_file(state.params, checkpoint_file)
         final_accuracy = accuracy(state, dataset['test']['X'], dataset['test']['Y'], batch_size=args.batch_size)
         print(f"Final accuracy: {final_accuracy:.3%}")
@@ -612,7 +615,7 @@ if __name__ == "__main__":
     if args.attack:
         train_args = {
             a.split('=')[0]: a.split('=')[1]
-            for a in args.file.replace(".safetensors", "").replace("precode-", "")[args.file.rfind('/') + 1:].split('-')
+            for a in args.file.replace(".safetensors", "")[args.file.rfind('/') + 1:].split('-')
         }
         dataset = getattr(load_datasets, train_args['dataset'])()
         model = get_model(train_args["model"])(dataset.nclasses)
@@ -643,6 +646,7 @@ if __name__ == "__main__":
                 dataset,
                 train_args,
                 seed=seed,
+                batch_size=args.batch_size,
                 l1_reg=args.l1_reg,
                 l2_reg=args.l2_reg,
             )

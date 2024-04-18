@@ -9,6 +9,7 @@ Session.vim
 *.blg
 .venv
 checkpoints/
+precode_checkpoints/
 *.png
 poetry.lock
 *.bak
