@@ -64,9 +64,9 @@ class MLP(nn.Module):
         x = nn.relu(x)
         x = nn.Dense(100)(x)
         x = nn.relu(x)
-        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         if representation:
             return x
+        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         x = nn.Dense(self.classes, name="classifier")(x)
         x = nn.softmax(x)
         if training:
@@ -86,9 +86,9 @@ class CNN(nn.Module):
         x = nn.Conv(16, (3, 3), padding="SAME")(x)
         x = nn.relu(x)
         x = einops.rearrange(x, "b h w c -> b (h w c)")
-        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         if representation:
             return x
+        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         x = nn.Dense(self.classes, name="classifier")(x)
         x = nn.softmax(x)
         if training:
@@ -112,9 +112,9 @@ class LeNet(nn.Module):
         x = nn.relu(x)
         x = nn.Dense(84)(x)
         x = nn.relu(x)
-        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         if representation:
             return x
+        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         x = nn.Dense(self.classes, name="classifier")(x)
         x = nn.softmax(x)
         if training:
@@ -158,9 +158,9 @@ class ConvNeXt(nn.Module):
                 )(x)
 
         x = einops.reduce(x, 'b h w c -> b c', 'mean')
-        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         if representation:
             return x
+        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         x = nn.LayerNorm(epsilon=1e-6, name="convnext_base_head_layernorm")(x)
         x = nn.Dense(self.classes, name="classifier")(x)
         x = nn.softmax(x)
@@ -238,10 +238,10 @@ class ResNetV2(nn.Module):
         x = nn.relu(x)
 
         x = einops.reduce(x, "b h w d -> b d", 'mean')
-
-        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         if representation:
             return x
+
+        x, mu, std = VariationalBottleNeck(name="bottleneck")(x)
         x = nn.Dense(self.classes, name="classifier")(x)
         x = nn.softmax(x)
         if training:
