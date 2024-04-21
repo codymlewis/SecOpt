@@ -20,7 +20,13 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
         lr='0.001'
     fi
 
+    if [[ $dataset == "svhn" ]]; then
+        extra_flags=""
+    else
+        extra_flags="--pgd"
+    fi
+
     for model in ${models[@]}; do
-    	python train_inversion.py --epochs 100 --dataset $dataset --optimiser secadam --model $model --batch-size $batch_size --learning-rate $lr --pgd
+        python train_inversion.py --epochs 100 --dataset $dataset --optimiser secadam --model $model --batch-size $batch_size --learning-rate $lr $extra_flags
     done
 done
