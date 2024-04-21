@@ -46,15 +46,22 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
     lr='0.001'
   fi
 
+  if [[ $dataset == "svhn" ]]; then
+     extra_flags=""
+  else
+    extra_flags="--pgd"
+  fi
+  
+
   for model in ${models[@]}; do
-    python precode.py --epochs 100 --dataset $dataset --model $model --batch-size $batch_size --learning-rate $lr --pgd --train-inversion
+    python precode.py --epochs 100 --dataset $dataset --model $model --batch-size $batch_size --learning-rate $lr $extra_flags --train-inversion
   done
 done
 
 echo "Inverting models..."
 
 for checkpoint in precode_checkpoints/*; do
-  python precode.py -f $checkpoint -r 30 -b 8 --attack --l1-reg 0.0 --l2-reg 0.001
+  python precode.py -f $checkpoint --runs 30 -b 8 --attack --l1-reg 0.0 --l2-reg 0.001
 done
 
 echo "Done."

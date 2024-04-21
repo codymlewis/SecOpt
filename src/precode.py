@@ -667,6 +667,6 @@ if __name__ == "__main__":
         full_results = pd.DataFrame.from_dict(all_results)
         print("Summary results:")
         print(full_results.describe())
-        results_fn = "results/inversion_results.csv"
+        results_fn = "results/precode_inversion_results.csv"
         full_results.to_csv(results_fn, mode='a', header=not os.path.exists(results_fn), index=False)
         print(f"Added results to {results_fn}")
