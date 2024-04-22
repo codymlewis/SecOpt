@@ -342,3 +342,28 @@ Results of the experiments using the iDLG https://arxiv.org/abs/2001.02610 and C
 | | | DP-SecAdam | 13.667149 | 0.178436 |
 
 With this, we see that while these attacks are less effective in our setting, SecAdam still tends to reduce the effectiveness of inversion. The only cases that are in exception to this remain close to federated averaging and do not exceed a SSIM of 0.5.
+
+
+## SVHN Attack Images
+
+Below, we demonstrate qualitatively some attack recoverys from the representation attack on SVHN. This shows how many failed attacks recover a singular color, which contributes positively to the PSNR.
+
+First the ground truth:
+
+![Ground truth SVHN images](images/svhn_ground_truth.png)
+
+Then the attack results on SGD:
+
+![SGD representation attack results](images/representation_svhn_sgd.png)
+
+Then on DP-SGD:
+
+![DP-SGD representation attack results](images/representation_svhn_dpsgd.png)
+
+Then for SecAdam:
+
+![SecAdam representation attack results](images/representation_svhn_secadam.png)
+
+And finally for DP-SecAdam:
+
+![DP-SecAdam representation attack results](images/representation_svhn_dpsecadam.png)
