@@ -276,6 +276,8 @@ if __name__ == "__main__":
         opt_name = train_args["optimiser"]
     all_results['optimiser'] = [opt_name for _ in range(args.runs)]
     all_results['batch_size'] = [args.batch_size for _ in range(args.runs)]
+    all_results['steps'] = [args.steps for _ in range(args.runs)]
+    all_results['regularise'] = [args.regularise for _ in range(args.runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
     if args.plot:
         all_Zs, all_idxs = [], []
@@ -331,6 +333,7 @@ if __name__ == "__main__":
     full_results = pd.DataFrame.from_dict(all_results)
     print("Summary results:")
     print(full_results.describe())
+    os.makedirs("results", exist_ok=True)
     results_fn = "results/inversion_results.csv"
     full_results.to_csv(results_fn, mode='a', header=not os.path.exists(results_fn), index=False)
     print(f"Added results to {results_fn}")

@@ -7,7 +7,7 @@ if __name__ == "__main__":
     if os.path.exists(inversion_fn):
         print("Showing inversion attack results:")
         inversion_df = pd.read_csv(inversion_fn)
-        inversion_df = inversion_df.groupby(['dataset', 'model', 'pgd', 'attack', 'optimiser', 'batch_size']).mean()
+        inversion_df = inversion_df.groupby(['dataset', 'model', 'pgd', 'attack', 'optimiser', 'batch_size', 'steps']).mean()
         inversion_df = inversion_df.reset_index()
         print(inversion_df.style.hide().to_latex(position_float='centering'))
         print()
