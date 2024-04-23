@@ -601,8 +601,8 @@ if __name__ == "__main__":
         training_details['accuracy'] = final_accuracy
         training_details['loss'] = final_loss
 
+    os.makedirs('results', exist_ok=True)
     if args.train_inversion or args.performance:
-        os.makedirs('results', exist_ok=True)
         if not os.path.exists(results_file):
             with open(results_file, 'w') as f:
                 f.write(",".join(training_details.keys()))
