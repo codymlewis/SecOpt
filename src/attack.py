@@ -278,6 +278,8 @@ if __name__ == "__main__":
     all_results['batch_size'] = [args.batch_size for _ in range(args.runs)]
     all_results['steps'] = [args.steps for _ in range(args.runs)]
     all_results['regularise'] = [args.regularise for _ in range(args.runs)]
+    all_results['l1_reg'] = [args.l1_reg for _ in range(args.runs)]
+    all_results['l2_reg'] = [args.l2_reg for _ in range(args.runs)]
     all_results.update({"seed": [], "psnr": [], "ssim": []})
     if args.plot:
         all_Zs, all_idxs = [], []

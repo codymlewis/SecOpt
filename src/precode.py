@@ -636,6 +636,8 @@ if __name__ == "__main__":
         }
         all_results['attack'] = [args.attack for _ in range(args.runs)]
         all_results['batch_size'] = [args.batch_size for _ in range(args.runs)]
+        all_results['l1_reg'] = [args.l1_reg for _ in range(args.runs)]
+        all_results['l2_reg'] = [args.l2_reg for _ in range(args.runs)]
         all_results.update({"seed": [], "psnr": [], "ssim": []})
 
         for i in range(0, args.runs):
