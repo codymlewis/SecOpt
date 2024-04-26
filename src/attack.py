@@ -248,8 +248,8 @@ if __name__ == "__main__":
         init_params = safeflax.load_file(args.file)
     else:
         init_params = model.init(jax.random.PRNGKey(train_args['seed'], dataset['train'][:1]))
-    if args.optimiser:
-        if "dp" in args.optimiser:
+    if args.optimiser is not None:
+        if args.optimiser.startswith("dp"):
             opt = common.find_optimiser(args.optimiser)(
                 float(train_args["learning_rate"]), clip_threshold=args.clip_threshold, noise_scale=args.noise_scale)
         else:
@@ -271,7 +271,10 @@ if __name__ == "__main__":
     }
     all_results['attack'] = [args.attack for _ in range(args.runs)]
     if args.optimiser:
-        opt_name = f"{args.optimiser}_ct{args.clip_threshold}_ns{args.noise_scale}" if "dp" in args.optimiser else args.optimiser
+        if args.optimiser.startswith("dp"):
+            opt_name = f"{args.optimiser}_ct{args.clip_threshold}_ns{args.noise_scale}"
+        else:
+            opt_name = args.optimiser
     else:
         opt_name = train_args["optimiser"]
     all_results['optimiser'] = [opt_name for _ in range(args.runs)]
