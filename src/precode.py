@@ -19,6 +19,7 @@ import safeflax
 import load_datasets
 import attack
 import common
+import optimisers
 
 
 class VBTrainState(train_state.TrainState):
@@ -483,6 +484,7 @@ if __name__ == "__main__":
     parser.add_argument('-m', '--model', type=str, default="LeNet", help="Neural network model to train.")
     parser.add_argument('-lr', '--learning-rate', type=float, default=0.001,
                         help="Learning rate to use for training.")
+    parser.add_argument("--secadam", action="store_true", help="Whether to use SecAdam.")
     parser.add_argument('--pgd', action="store_true", help="Perform projected gradient descent hardening.")
     parser.add_argument('--perturb', action="store_true", help="Perturb the training data.")
     parser.add_argument("--train-inversion", action="store_true", help="Train a model to be attacked")
@@ -501,7 +503,7 @@ if __name__ == "__main__":
     state = VBTrainState.create(
         apply_fn=model.apply,
         params=model.init(params_key, dataset['train']['X'][:1]),
-        tx=optax.sgd(args.learning_rate),
+        tx=optimisers.secadam(args.learning_rate) if args.secadam else optax.sgd,
         key=vb_key,
     )
     update_step = pgd_update_step if args.pgd else update_step
@@ -510,7 +512,7 @@ if __name__ == "__main__":
 
     if args.train_inversion:
         checkpoint_file = "precode_checkpoints/" + \
-            "dataset={}-seed={}-learning_rate={}-pgd={}-model={}-perturb={}-batch_size={}.safetensors".format(
+            "dataset={}-seed={}-learning_rate={}-pgd={}-model={}-perturb={}-batch_size={}-secadam={}.safetensors".format(
                 args.dataset,
                 args.seed,
                 args.learning_rate,
@@ -518,6 +520,7 @@ if __name__ == "__main__":
                 args.model,
                 args.perturb,
                 args.batch_size,
+                args.secadam,
             )
 
         for e in (pbar := trange(args.epochs)):
@@ -541,13 +544,13 @@ if __name__ == "__main__":
         training_details['accuracy'] = final_accuracy
 
     if args.performance:
-        global_state = state
+        global_state = state.replace(tx=optax.sgd(args.learning_rate))
         client_keys = iter(jax.random.split(params_key, args.clients))
         client_states = [
                 VBTrainState.create(
                     apply_fn=model.apply,
                     params=global_state.params,
-                    tx=optax.sgd(args.learning_rate),
+                    tx=optimisers.secadam(args.learning_rate) if args.secadam else optax.sgd(args.learning_rate),
                     key=next(client_keys),
                 )
                 for _ in range(args.clients)
@@ -559,7 +562,10 @@ if __name__ == "__main__":
 
         for _ in (pbar := trange(args.rounds)):
             full_loss_sum = 0.0
-            all_updates = []
+            if args.secadam:
+                all_mus, all_nus = [], []
+            else:
+                all_updates = []
             for c in range(args.clients):
                 client_states[c] = client_states[c].replace(params=global_state.params)
                 for _ in range(args.epochs):
@@ -584,8 +590,16 @@ if __name__ == "__main__":
                         loss_sum += loss
                 full_loss_sum += loss_sum / len(idxs)
 
-                all_updates.append(common.find_update(global_state, client_states[c], args.learning_rate))
-            global_grads = common.fedavg(all_updates)
+                if args.secadam:
+                    mu, nu = common.find_secadam_update(client_states[c])
+                    all_mus.append(mu)
+                    all_nus.append(nu)
+                else:
+                    all_updates.append(common.find_update(global_state, client_states[c], args.learning_rate))
+            if args.secadam:
+                global_grads = common.secadam_agg(all_mus, all_nus)
+            else:
+                global_grads = common.fedavg(all_updates)
             global_state = global_state.apply_gradients(grads=global_grads)
             pbar.set_postfix_str(f"LOSS: {full_loss_sum / args.clients:.3f}")
         final_accuracy, final_loss = measure(
@@ -622,7 +636,8 @@ if __name__ == "__main__":
         if train_args['perturb'] == "True":
             dataset.perturb(np.random.default_rng(int(train_args['seed']) + 1))
         init_params = safeflax.load_file(args.file)
-        opt = optax.sgd(float(train_args["learning_rate"]))
+        learning_rate = float(train_args["learning_rate"])
+        opt = optimisers.secadam(learning_rate) if train_args["secadam"] == "True" else optax.sgd(learning_rate)
         state = VBTrainState.create(
             apply_fn=model.apply,
             params=init_params,

@@ -22,6 +22,7 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
 
   for seed in {1..5}; do
     python precode.py -s $seed --dataset $dataset --model $model --batch-size $batch_size --learning-rate $lr --performance
+    python precode.py -s $seed --dataset $dataset --model $model --batch-size $batch_size --learning-rate $lr --secadam --performance
   done
 done
 
@@ -55,6 +56,7 @@ for dataset in fmnist cifar10 cifar100 svhn tinyimagenet; do
 
   for model in ${models[@]}; do
     python precode.py --epochs 100 --dataset $dataset --model $model --batch-size $batch_size --learning-rate $lr $extra_flags --train-inversion
+    python precode.py --epochs 100 --dataset $dataset --model $model --batch-size $batch_size --learning-rate $lr --secadam $extra_flags --train-inversion
   done
 done
 
