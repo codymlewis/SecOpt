@@ -1,6 +1,6 @@
 # Mitigation of Gradient Inversion Attacks in Federated Learning with Private Adaptive Optimization
 
-Code repository for all experiments for our namesake paper. To appear in [ICDCS 2024](https://icdcs2024.icdcs.org/).
+Code repository for all experiments for our namesake paper. Which appeared in [ICDCS 2024](https://icdcs2024.icdcs.org/): https://ieeexplore.ieee.org/document/10631001.
 
 ## Abstract
 
